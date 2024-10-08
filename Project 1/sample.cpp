@@ -51,7 +51,7 @@
 
 // title of these windows:
 
-const char *WINDOWTITLE = "OpenGL / GLUT Sample -- Joe Graphics";
+const char *WINDOWTITLE = "OpenGL / GLUT Project 1 -- Joshua Brown";
 const char *GLUITITLE   = "User Interface Window";
 
 // what the glui package defines as true and false:
@@ -69,7 +69,8 @@ const int INIT_WINDOW_SIZE = 600;
 
 // size of the 3d box to be drawn:
 
-const float BOXSIZE = 2.f;
+const float TREE_HEIGHT_SCALE = 1.f;
+const float TREE_WIDTH_SCALE = 1.f;
 
 // multiplication factors for input interaction:
 //  (these are known from previous experience)
@@ -149,11 +150,11 @@ char * ColorNames[ ] =
 
 const GLfloat Colors[ ][3] = 
 {
-	{ 1., 0., 0. },		// red
-	{ 1., 1., 0. },		// yellow
-	{ 0., 1., 0. },		// green
-	{ 0., 1., 1. },		// cyan
-	{ 0., 0., 1. },		// blue
+	{ 0.0745, 0.228, 0.0745 },		// Dark Green
+	{ 0.122, 0.378, 0.122 },		// Green
+	{ 0.247, 0.188, 0.004 },		// Brown
+	{ 0.937, 0.803, 0.252 },		// Light Gold
+	{ 0.697, 0.567, 0.146 },		// Dark Gold
 	{ 1., 0., 1. },		// magenta
 };
 
@@ -186,7 +187,7 @@ const int MS_PER_CYCLE = 10000;		// 10000 milliseconds = 10 seconds
 int		ActiveButton;			// current button that is down
 GLuint	AxesList;				// list to hold the axes
 int		AxesOn;					// != 0 means to draw the axes
-GLuint	BoxList;				// object display list
+GLuint	TreeList;				// object display list
 int		DebugOn;				// != 0 means to print debugging info
 int		DepthCueOn;				// != 0 means to use intensity depth cueing
 int		DepthBufferOn;			// != 0 means to use the z-buffer
@@ -453,14 +454,14 @@ Display( )
 
 	// draw the box object by calling up its display list:
 
-	glCallList( BoxList );
+	glCallList( TreeList );
 
 #ifdef DEMO_Z_FIGHTING
 	if( DepthFightingOn != 0 )
 	{
 		glPushMatrix( );
 			glRotatef( 90.f,   0.f, 1.f, 0.f );
-			glCallList( BoxList );
+			glCallList( TreeList );
 		glPopMatrix( );
 	}
 #endif
@@ -826,72 +827,99 @@ InitLists( )
 	if (DebugOn != 0)
 		fprintf(stderr, "Starting InitLists.\n");
 
-	float dx = BOXSIZE / 2.f;
-	float dy = BOXSIZE / 2.f;
-	float dz = BOXSIZE / 2.f;
 	glutSetWindow( MainWindow );
 
 	// create the object:
 
-	BoxList = glGenLists( 1 );
-	glNewList( BoxList, GL_COMPILE );
+	const float LAYER_HEIGHT = 0.75;
+	const float LAYER_SCALE = 0.8f;
+	const float LAYER_OVERLAPP = 0.2f;
+	const int LAYER_COUNT = 4;
+	const int CIRCLE_DIVISIONS = 25;
+	const float RADIUS = 1;
+	const float sliceRad = 2 * M_PI / CIRCLE_DIVISIONS;
 
-		glBegin( GL_QUADS );
+	float offset = 0;
+	TreeList = glGenLists( 1 );
+	glNewList( TreeList, GL_COMPILE );
+		// Draw Tree Layers
+		glPushMatrix();
+		for(int layer = 0; layer < LAYER_COUNT; layer++){
 
-			glColor3f( 1., 0., 0. );
+			// Scale down layer
+			float layerScale = pow(LAYER_SCALE, layer);
+			glScalef(layerScale, 1, layerScale);
 
-				glNormal3f( 1., 0., 0. );
-					glVertex3f(  dx, -dy,  dz );
-					glVertex3f(  dx, -dy, -dz );
-					glVertex3f(  dx,  dy, -dz );
-					glVertex3f(  dx,  dy,  dz );
+			// Set Color
+			glColor3f(Colors[layer%2][0], Colors[layer%2][1], Colors[layer%2][2]);
+				
+			// Draw Cone Bottom
+			glBegin( GL_TRIANGLE_FAN );
 
-				glNormal3f(-1., 0., 0.);
-					glVertex3f( -dx, -dy,  dz);
-					glVertex3f( -dx,  dy,  dz );
-					glVertex3f( -dx,  dy, -dz );
-					glVertex3f( -dx, -dy, -dz );
+				// Draw layer bottom
+				glVertex3f(0, offset, 0);
+				for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
+					glVertex3f(sin(sliceRad * i) * RADIUS, offset, cos(sliceRad * i) * RADIUS);
+				}
+				
+			glEnd( );
 
-			glColor3f( 0., 1., 0. );
+			// Draw Cone Layer
+			glBegin( GL_TRIANGLE_FAN );
+				glVertex3f(0, offset + LAYER_HEIGHT * layerScale, 0);
+				for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
+					glVertex3f(sin(sliceRad * i) * RADIUS, offset, cos(sliceRad * i) * RADIUS);
+				}
+				offset += LAYER_HEIGHT * layerScale - LAYER_OVERLAPP * layerScale;
+			glEnd( );
+		}
+		glPopMatrix();
 
-				glNormal3f(0., 1., 0.);
-					glVertex3f( -dx,  dy,  dz );
-					glVertex3f(  dx,  dy,  dz );
-					glVertex3f(  dx,  dy, -dz );
-					glVertex3f( -dx,  dy, -dz );
+		// Draw Tree Trunk
+		
+		// Set Color
+		glColor3f(Colors[2][0], Colors[2][1], Colors[2][2]);
 
-				glNormal3f(0., -1., 0.);
-					glVertex3f( -dx, -dy,  dz);
-					glVertex3f( -dx, -dy, -dz );
-					glVertex3f(  dx, -dy, -dz );
-					glVertex3f(  dx, -dy,  dz );
+		//Draw Outside
+		glBegin(GL_TRIANGLE_STRIP);
+		for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
+			glVertex3f(sin(sliceRad * i) * RADIUS * 0.3, 0, cos(sliceRad * i) * RADIUS * 0.3);
+			glVertex3f(sin(sliceRad * i) * RADIUS * 0.3, -LAYER_HEIGHT, cos(sliceRad * i) * RADIUS * 0.3);
+		}
+		glEnd();
 
-			glColor3f(0., 0., 1.);
+		//Draw Bottom
+		glBegin(GL_TRIANGLE_FAN);
+		glVertex3f(0, -LAYER_HEIGHT, 0);
+		for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
+			glVertex3f(sin(sliceRad * i) * RADIUS * 0.3, -LAYER_HEIGHT, cos(sliceRad * i) * RADIUS * 0.3);
+		}
+		glEnd();
+		offset += 0.1;
 
-				glNormal3f(0., 0., 1.);
-					glVertex3f(-dx, -dy, dz);
-					glVertex3f( dx, -dy, dz);
-					glVertex3f( dx,  dy, dz);
-					glVertex3f(-dx,  dy, dz);
+		// Draw Star On Top
+		float starSlice = 2 * M_PI / 10;
+		float starRadius = 0.3;
+		offset += starRadius / 2;
 
-				glNormal3f(0., 0., -1.);
-					glVertex3f(-dx, -dy, -dz);
-					glVertex3f(-dx,  dy, -dz);
-					glVertex3f( dx,  dy, -dz);
-					glVertex3f( dx, -dy, -dz);
+		glBegin(GL_TRIANGLE_FAN);
+		glVertex3f(0, offset, 0.12);
+		for(int i = 0; i <= 10; i++) {
+			glColor3f(Colors[i%2 + 3][0], Colors[i%2 + 3][1], Colors[i%2 + 3][2]);
+			glVertex3f(sin(starSlice * i) * starRadius / (i%2 + 1), offset + cos(starSlice * i) * starRadius / (i%2 + 1), 0);
+		}
+		glEnd();
 
-		glEnd( );
+		glBegin(GL_TRIANGLE_FAN);
+		glVertex3f(0, offset, -0.12);
+		for(int i = 0; i <= 10; i++) {
+			glColor3f(Colors[(i+1)%2 + 3][0], Colors[(i+1)%2 + 3][1], Colors[(i+1)%2 + 3][2]);
+			glVertex3f(sin(starSlice * i) * starRadius / (i%2 + 1), offset + cos(starSlice * i) * starRadius / (i%2 + 1), 0);
+		}
+		glEnd();
+		
+		
 
-	glEndList( );
-
-
-	// create the axes:
-
-	AxesList = glGenLists( 1 );
-	glNewList( AxesList, GL_COMPILE );
-		glLineWidth( AXES_WIDTH );
-			Axes( 1.5 );
-		glLineWidth( 1. );
 	glEndList( );
 }
 
