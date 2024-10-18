@@ -1,0 +1,17 @@
+[
+ {
+  "directory": "/home/joshua/Documents/code/CS450/Project 1",
+  "arguments": [
+   "g++",
+   "-o",
+   "sample",
+   "sample.cpp",
+   "-I.",
+   "-lGL",
+   "-lGLU",
+   "-lglut",
+   "-lm"
+  ],
+  "file": "sample.cpp"
+ }
+]
