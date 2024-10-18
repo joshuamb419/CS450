@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <ctype.h>
 
+#include <heli.550>
+
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -51,7 +53,7 @@
 
 // title of these windows:
 
-const char *WINDOWTITLE = "OpenGL / GLUT Project 1 -- Joshua Brown";
+const char *WINDOWTITLE = "OpenGL / GLUT Project 2 -- Joshua Brown";
 const char *GLUITITLE   = "User Interface Window";
 
 // what the glui package defines as true and false:
@@ -113,6 +115,23 @@ enum ButtonVals
 	QUIT
 };
 
+// eye positions
+
+enum Eyes {
+	OUTSIDE,
+	INSIDE
+};
+
+const GLfloat OUTSIDE_EYE[] = {-15., 10., 15};
+const GLfloat OUTSIDE_LOOK_AT[] = {0., 0., 0.};
+
+const GLfloat INSIDE_EYE[] = {-0.4, 1.8, -4.9};
+const GLfloat INSIDE_LOOK_AT[] = {-0.4, 1.8, -10.};
+
+// Blade Properties
+const GLfloat BLADE_RADIUS = 1.f;
+const GLfloat BLADE_WIDTH = 0.4f;
+const int	  BLADE_RPM = 10;
 // window background color (rgba):
 
 const GLfloat BACKCOLOR[ ] = { 0., 0., 0., 1. };
@@ -188,6 +207,8 @@ int		ActiveButton;			// current button that is down
 GLuint	AxesList;				// list to hold the axes
 int		AxesOn;					// != 0 means to draw the axes
 GLuint	TreeList;				// object display list
+GLuint	HeliList;				// Helicopter List
+GLuint	BladeList;				// Blade List
 int		DebugOn;				// != 0 means to print debugging info
 int		DepthCueOn;				// != 0 means to use intensity depth cueing
 int		DepthBufferOn;			// != 0 means to use the z-buffer
@@ -200,6 +221,8 @@ int		ShadowsOn;				// != 0 means to turn shadows on
 float	Time;					// used for animation, this has a value between 0. and 1.
 int		Xmouse, Ymouse;			// mouse values
 float	Xrot, Yrot;				// rotation angles in degrees
+Eyes	currentEye = OUTSIDE;
+float	bladeRotation = 0.0f;
 
 
 // function prototypes:
@@ -349,6 +372,8 @@ Animate( )
 
 	// for example, if you wanted to spin an object in Display( ), you might call: glRotatef( 360.f*Time,   0., 1., 0. );
 
+	bladeRotation = 360 * Time * BLADE_RPM;
+
 	// force a call to Display( ) next time it is convenient:
 
 	glutSetWindow( MainWindow );
@@ -398,9 +423,9 @@ Display( )
 
 	glMatrixMode( GL_PROJECTION );
 	glLoadIdentity( );
-	if( NowProjection == ORTHO )
-		glOrtho( -2.f, 2.f,     -2.f, 2.f,     0.1f, 1000.f );
-	else
+	// if( NowProjection == ORTHO )
+	// 	glOrtho( -2.f, 2.f,     -2.f, 2.f,     0.1f, 1000.f );
+	// else
 		gluPerspective( 70.f, 1.f,	0.1f, 1000.f );
 
 	// place the objects into the scene:
@@ -410,18 +435,31 @@ Display( )
 
 	// set the eye position, look-at position, and up-vector:
 
-	gluLookAt( 0.f, 0.f, 3.f,     0.f, 0.f, 0.f,     0.f, 1.f, 0.f );
+	if(currentEye == OUTSIDE){
+		gluLookAt( OUTSIDE_EYE[0], OUTSIDE_EYE[1], OUTSIDE_EYE[2],     OUTSIDE_LOOK_AT[0], OUTSIDE_LOOK_AT[1], OUTSIDE_LOOK_AT[2],     0.f, 1.f, 0.f );
+	} else {
+		gluLookAt( INSIDE_EYE[0], INSIDE_EYE[1], INSIDE_EYE[2],     INSIDE_LOOK_AT[0], INSIDE_LOOK_AT[1], INSIDE_LOOK_AT[2],     0.f, 1.f, 0.f );
+	}
 
 	// rotate the scene:
-
-	glRotatef( (GLfloat)Yrot, 0.f, 1.f, 0.f );
-	glRotatef( (GLfloat)Xrot, 1.f, 0.f, 0.f );
+	if(currentEye == OUTSIDE){
+		glRotatef( (GLfloat)Yrot, 0.f, 1.f, 0.f );
+		glRotatef( (GLfloat)Xrot, 1.f, 0.f, 0.f );
+	} else {
+		glRotatef( (GLfloat)0., 0.f, 1.f, 0.f );
+		glRotatef( (GLfloat)0., 1.f, 0.f, 0.f );
+	}
 
 	// uniformly scale the scene:
 
+	
 	if( Scale < MINSCALE )
 		Scale = MINSCALE;
-	glScalef( (GLfloat)Scale, (GLfloat)Scale, (GLfloat)Scale );
+
+	if(currentEye == OUTSIDE)
+		glScalef( (GLfloat)Scale, (GLfloat)Scale, (GLfloat)Scale );
+	else
+		glScalef( 1., 1., 1. );
 
 	// set the fog parameters:
 
@@ -452,9 +490,32 @@ Display( )
 	glEnable( GL_NORMALIZE );
 
 
-	// draw the box object by calling up its display list:
+	// draw the tree object by calling up its display list:
 
+	glPushMatrix();
+	glTranslatef(0., 0., -25.);
+	glScalef(5, 5, 5);
 	glCallList( TreeList );
+	glPopMatrix();
+
+	// Draw Helicopter
+	glCallList( HeliList );
+
+	// Draw Helicopter Blades
+	glPushMatrix();
+	glTranslatef(0., 2.9, -2.);
+	glRotatef(bladeRotation, 0., 1., 0.);
+	glScalef(5., 1., 5.);
+	glCallList( BladeList );
+	glPopMatrix();
+	
+	glPushMatrix();
+	glTranslatef(0.5, 2.5, 9.);
+	glRotatef(90, 0., 0., 1.);
+	glRotatef(2*bladeRotation, 0., 1., 0.);
+	glScalef(3., 1., 3.);
+	glCallList( BladeList );
+	glPopMatrix();
 
 #ifdef DEMO_Z_FIGHTING
 	if( DepthFightingOn != 0 )
@@ -561,6 +622,17 @@ void
 DoDepthMenu( int id )
 {
 	DepthCueOn = id;
+
+	glutSetWindow( MainWindow );
+	glutPostRedisplay( );
+}
+
+void doViewMenu(int id) {
+	if(id == 0){
+		currentEye = OUTSIDE;
+	} else {
+		currentEye = INSIDE;
+	}
 
 	glutSetWindow( MainWindow );
 	glutPostRedisplay( );
@@ -692,9 +764,13 @@ InitMenus( )
 	glutAddMenuEntry( "Off",  0 );
 	glutAddMenuEntry( "On",   1 );
 
-	int projmenu = glutCreateMenu( DoProjectMenu );
-	glutAddMenuEntry( "Orthographic",  ORTHO );
-	glutAddMenuEntry( "Perspective",   PERSP );
+	// int projmenu = glutCreateMenu( DoProjectMenu );
+	// glutAddMenuEntry( "Orthographic",  ORTHO );
+	// glutAddMenuEntry( "Perspective",   PERSP );
+
+	int viewMenu = glutCreateMenu( doViewMenu );
+	glutAddMenuEntry( "Outside", 0 );
+	glutAddMenuEntry( "Inside", 1 );
 
 	int mainmenu = glutCreateMenu( DoMainMenu );
 	glutAddSubMenu(   "Axes",          axesmenu);
@@ -709,7 +785,7 @@ InitMenus( )
 #endif
 
 	glutAddSubMenu(   "Depth Cue",     depthcuemenu);
-	glutAddSubMenu(   "Projection",    projmenu );
+	glutAddSubMenu(   "View",    	   viewMenu );
 	glutAddMenuEntry( "Reset",         RESET );
 	glutAddSubMenu(   "Debug",         debugmenu);
 	glutAddMenuEntry( "Quit",          QUIT );
@@ -920,6 +996,45 @@ InitLists( )
 		
 		
 
+	glEndList( );
+
+	HeliList = glGenLists(1);	
+	glNewList(HeliList, GL_COMPILE);
+
+		int i;
+		struct edge *ep;
+		struct point *p0, *p1;
+
+		glPushMatrix( );
+		glTranslatef( 0., -1., 0. );
+		glRotatef(  97.,   0., 1., 0. );
+		glRotatef( -15.,   0., 0., 1. );
+		glColor3f(0.478, 0., 1.);
+		glBegin( GL_LINES );
+			for( i=0, ep = Heliedges; i < Helinedges; i++, ep++ )
+			{
+				p0 = &Helipoints[ ep->p0 ];
+				p1 = &Helipoints[ ep->p1 ];
+				glVertex3f( p0->x, p0->y, p0->z );
+				glVertex3f( p1->x, p1->y, p1->z );
+			}
+				glEnd( );
+		glPopMatrix( );
+
+	glEndList();
+
+	BladeList = glGenLists(1);
+	glNewList( BladeList, GL_COMPILE );
+		glBegin( GL_TRIANGLES );
+			glColor3f(0.376, 0.91, 1.);
+			glVertex2f(  BLADE_RADIUS,  BLADE_WIDTH/2. );
+			glVertex2f(  0., 0. );
+			glVertex2f(  BLADE_RADIUS, -BLADE_WIDTH/2. );
+
+			glVertex2f( -BLADE_RADIUS, -BLADE_WIDTH/2. );
+			glVertex2f(  0., 0. );
+			glVertex2f( -BLADE_RADIUS,  BLADE_WIDTH/2. );
+		glEnd( );
 	glEndList( );
 }
 
