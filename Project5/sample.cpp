@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-#include <heli.550>
+#include "heli.550"
 
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -30,18 +30,6 @@
 #endif
 
 #include "glut.h"
-
-#define XSIDE	15			// length of the x side of the grid
-#define X0      (-XSIDE/2.)		// where one side starts
-#define NX		30			// how many points in x
-#define DX		( XSIDE/(float)NX )	// change in x between the points
-
-#define YGRID	0.f			// y-height of the grid
-
-#define ZSIDE	15			// length of the z side of the grid
-#define Z0      (-ZSIDE/2.)		// where one side starts
-#define NZ		30			// how many points in z
-#define DZ		( ZSIDE/(float)NZ )	// change in z between the points
 
 
 
@@ -214,10 +202,34 @@ float	Time;					// used for animation, this has a value between 0. and 1.
 int		Xmouse, Ymouse;			// mouse values
 float	Xrot, Yrot;				// rotation angles in degrees
 GLfloat lightColor[3] = {1.f, 1.f, 1.f};
-GLfloat lightPosition[3] = {0.f, 5.f, 0.f};
+GLfloat lightPosition[3] = {0.f, 0.f, 0.f};
 bool	freezeAnimation = false;
 bool	isPointLight = true;
+u_int 	displayMode = 0; // 0: GL_REPLACE, 1: GL_MODULATE, 2: No Texture
 
+struct planet {
+ 	char*	name;
+	char*	file;
+	float	scale;
+	GLuint	displayList;
+	char	key;
+	GLuint	tex;
+};
+
+struct planet planets[] =
+{
+        { "Venus",      "venus.bmp",     0.95f, 0, 'v', 0 }, // 0
+        { "Earth",      "earth.bmp",     1.00f, 0, 'e', 0 }, // 1
+        { "Moon",       "moon.bmp",      0.27f, 0, 'm', 0 }, // 2
+        { "Jupiter",    "jupiter.bmp",  11.21f, 0, 'j', 0 }, // 3
+        { "Saturn",     "saturn.bmp",    9.45f, 0, 's', 0 }, // 4
+        { "Uranus",     "uranus.bmp",    4.01f, 0, 'u', 0 }, // 5
+        { "Neptune",    "neptune.bmp",   3.88f, 0, 'n', 0 }, // 6
+        { "Pluto",      "pluto.bmp",     0.19f, 0, 'p', 0 }, // 7
+};
+
+int planetCount = sizeof(planets) / sizeof(struct planet);
+int currentPlanet = 1; // Start initialized to earth
 
 // function prototypes:
 
@@ -301,7 +313,7 @@ MulArray3(float factor, float a, float b, float c )
 #include "osusphere.cpp"
 #include "osucone.cpp"
 //#include "osutorus.cpp"
-//#include "bmptotexture.cpp"
+#include "bmptotexture.cpp"
 #include "loadobjfile.cpp"
 //#include "keytime.cpp"
 //#include "glslprogram.cpp"
@@ -366,8 +378,8 @@ Animate( )
 	ms %= MS_PER_CYCLE;							// makes the value of ms between 0 and MS_PER_CYCLE-1
 	Time = (float)ms / (float)MS_PER_CYCLE;		// makes the value of Time between 0. and slightly less than 1.
 
-	lightPosition[0] = 3 * cos(Time * 7 * F_PI);
-	lightPosition[2] = 3 * sin(Time * 7 * F_PI);
+	lightPosition[0] = 15 * cos(Time * 3 * F_PI);
+	lightPosition[2] = 15 * sin(Time * 3 * F_PI);
 	// for example, if you wanted to spin an object in Display( ), you might call: glRotatef( 360.f*Time,   0., 1., 0. );
 
 	// force a call to Display( ) next time it is convenient:
@@ -481,38 +493,34 @@ Display( )
 
 	}
 
+ 	// Draw sphere at the location of the light
 	glPushMatrix();
 	glColor3f(lightColor[0], lightColor[1], lightColor[2]);
 	glTranslatef(lightPosition[0], lightPosition[1] ,lightPosition[2]);
 	OsuSphere(0.5, 50, 50);
 	glPopMatrix();
 
-	glEnable( GL_LIGHTING );
-	glEnable( GL_LIGHT0 );
+	if(displayMode != 2) {
+		glEnable(GL_TEXTURE_2D);
+	}
 
-	glCallList( GridList );
+	if(displayMode == 1) {
+		glEnable( GL_LIGHTING );
+		glEnable( GL_LIGHT0 );
+		glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	} else {
+		glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+	}
 
-	glPushMatrix();
-	glTranslatef(3, 1.2, 3);
-	glScalef(0.005, 0.005, 0.005);
-	glTranslatef(1295.465, 1794.766, -2515.2);
-	glCallList(f1List);
-	glPopMatrix();
+	if(displayMode != 2) {
+		glBindTexture(GL_TEXTURE_2D, planets[currentPlanet].tex);
+	}
 
-	glPushMatrix();
-	glTranslatef(-3, 0, 1);
-	glRotatef(45, 0., 1., 0.);
-	glScalef(0.3, 0.3, 0.3);
-	glCallList(carList);
-	glPopMatrix();
+	glCallList(planets[currentPlanet].displayList);
 
-	glPushMatrix();
-	glTranslatef(0, 0, -4);
-	glRotatef(90, -1., 0., 0.);
-	glScalef(0.3, 0.3, 0.3);
-	glCallList(xboxList);
-	glPopMatrix();
 
+	glDisable( GL_TEXTURE_2D );
+	glDisable( GL_LIGHT0 );
 	glDisable( GL_LIGHTING );
 
 #ifdef DEMO_Z_FIGHTING
@@ -871,7 +879,24 @@ InitGraphics( )
 #endif
 
 	// all other setups go here, such as GLSLProgram and KeyTime setups:
+	for(int i = 0; i < planetCount; i++) {
+		int width, height;
+		char *file = planets[i].file;
+		unsigned char *texture = BmpToTexture( file, &width, &height );
+		if( texture == NULL )
+				fprintf( stderr, "Cannot open texture '%s'\n", file );
+		else
+				fprintf( stderr, "Opened '%s': width = %d ; height = %d\n", file, width, height );
 
+		glGenTextures( 1, &planets[i].tex );
+		glBindTexture( GL_TEXTURE_2D, planets[i].tex );
+		glPixelStorei( GL_UNPACK_ALIGNMENT, 1 );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexImage2D( GL_TEXTURE_2D, 0, 3, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, texture );
+	}
 }
 
 
@@ -899,45 +924,23 @@ InitLists( )
 	const float sliceRad = 2 * M_PI / CIRCLE_DIVISIONS;
 
 	float offset = 0;
-	GridList = glGenLists( 1 );
-	glNewList( GridList, GL_COMPILE );
-			SetMaterial( 0.6f, 0.6f, 0.6f, 30.f );		// or whatever else you want
-			glNormal3f( 0., 1., 0. );
-			for( int i = 0; i < NZ; i++ )
-			{
-					glBegin( GL_QUAD_STRIP );
-					for( int j = 0; j < NX; j++ )
-					{
-							glVertex3f( X0 + DX*(float)j, YGRID, Z0 + DZ*(float)(i+0) );
-							glVertex3f( X0 + DX*(float)j, YGRID, Z0 + DZ*(float)(i+1) );
-					}
-					glEnd( );
-			}
-	glEndList( );
 
 	SphereList = glGenLists( 1 );
 	glNewList( SphereList, GL_COMPILE);
-		SetMaterial( 0.5, 0.0, 0.0, 50.);
-		OsuSphere(1.f, 15, 15);
+		OsuSphere(1.f, 50, 50);
 	glEndList();
 
-	f1List = glGenLists(1);
-	glNewList(f1List, GL_COMPILE);
-		SetMaterial( 0.8, 0.0, 0.0, 90.);
-		LoadObjFile( (char *)"F1Car.obj" );
-	glEndList();
+	for(int i = 0; i < planetCount; i++) {
+		planets[i].displayList = glGenLists(1);
+		glNewList(planets[i].displayList, GL_COMPILE);
+			glBindTexture(GL_TEXTURE_2D, planets[i].tex);
+			glPushMatrix();
+				glScalef(planets[i].scale, planets[i].scale, planets[i].scale);
+				glCallList(SphereList);
+			glPopMatrix();
+		glEndList();
+	}
 
-	carList = glGenLists(1);
-	glNewList(carList, GL_COMPILE);
-		SetMaterial( 0.0, 0.0, 0.5, 30.);
-		LoadObjFile( (char *)"LowPolyCar.obj" );
-	glEndList();
-
-	xboxList = glGenLists(1);
-	glNewList(xboxList, GL_COMPILE);
-		SetMaterial( 0.0, 0.3, 0.0, 10.);
-		LoadObjFile( (char *)"xbox.obj" );
-	glEndList();
 }
 
 
@@ -956,58 +959,39 @@ Keyboard( unsigned char c, int x, int y )
 		case ESCAPE:
 			DoMainMenu( QUIT );	// will not return here
 			break;				// happy compiler
-
-		case 'w':
-		case 'W':
-			lightColor[0] = 1.f;
-			lightColor[1] = 1.f;
-			lightColor[2] = 1.f;
+		
+		case 'v':
+			currentPlanet = 0;
 			break;
-		case 'r':
-		case 'R':
-			lightColor[0] = 1.f;
-			lightColor[1] = 0.f;
-			lightColor[2] = 0.f;
-			break;
-		case 'g':
-		case 'G':
-			lightColor[0] = 0.f;
-			lightColor[1] = 1.f;
-			lightColor[2] = 0.f;
-			break;
-		case 'b':
-		case 'B':
-			lightColor[0] = 0.f;
-			lightColor[1] = 0.f;
-			lightColor[2] = 1.f;
-			break;
-		case 'c':
-		case 'C':
-			lightColor[0] = 0.f;
-			lightColor[1] = 1.f;
-			lightColor[2] = 1.f;
+		case 'e':
+			currentPlanet = 1;
 			break;
 		case 'm':
-		case 'M':
-			lightColor[0] = 1.f;
-			lightColor[1] = 0.f;
-			lightColor[2] = 1.f;
+			currentPlanet = 2;
 			break;
-		
+		case 'j':
+			currentPlanet = 3;
+			break;
+		case 's':
+			currentPlanet = 4;
+			break;
+		case 'u':
+			currentPlanet = 5;
+			break;
+		case 'n':
+			currentPlanet = 6;
+			break;
+		case 'p':
+			currentPlanet = 7;
+			break;
+		case 't':
+			displayMode += 1;
+			displayMode %= 3;
+			break;
 		case 'f':
 		case 'F':
 			freezeAnimation = !freezeAnimation;
 			break;
-
-		case 's':
-		case 'S':
-			isPointLight = false;
-			break;
-		case 'p':
-		case 'P':
-			isPointLight = true;
-			break;
-
 		default:
 			fprintf( stderr, "Don't know what to do with keyboard hit: '%c' (0x%0x)\n", c, c );
 	}
