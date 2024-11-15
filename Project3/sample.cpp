@@ -31,6 +31,18 @@
 
 #include "glut.h"
 
+#define XSIDE	15			// length of the x side of the grid
+#define X0      (-XSIDE/2.)		// where one side starts
+#define NX		30			// how many points in x
+#define DX		( XSIDE/(float)NX )	// change in x between the points
+
+#define YGRID	0.f			// y-height of the grid
+
+#define ZSIDE	15			// length of the z side of the grid
+#define Z0      (-ZSIDE/2.)		// where one side starts
+#define NZ		30			// how many points in z
+#define DZ		( ZSIDE/(float)NZ )	// change in z between the points
+
 
 
 //	This is a sample OpenGL / GLUT program
@@ -68,11 +80,6 @@ const int ESCAPE = 0x1b;
 // initial window size:
 
 const int INIT_WINDOW_SIZE = 600;
-
-// size of the 3d box to be drawn:
-
-const float TREE_HEIGHT_SCALE = 1.f;
-const float TREE_WIDTH_SCALE = 1.f;
 
 // multiplication factors for input interaction:
 //  (these are known from previous experience)
@@ -115,23 +122,6 @@ enum ButtonVals
 	QUIT
 };
 
-// eye positions
-
-enum Eyes {
-	OUTSIDE,
-	INSIDE
-};
-
-const GLfloat OUTSIDE_EYE[] = {-15., 10., 15};
-const GLfloat OUTSIDE_LOOK_AT[] = {0., 0., 0.};
-
-const GLfloat INSIDE_EYE[] = {-0.4, 1.8, -4.9};
-const GLfloat INSIDE_LOOK_AT[] = {-0.4, 1.8, -10.};
-
-// Blade Properties
-const GLfloat BLADE_RADIUS = 1.f;
-const GLfloat BLADE_WIDTH = 0.4f;
-const int	  BLADE_RPM = 10;
 // window background color (rgba):
 
 const GLfloat BACKCOLOR[ ] = { 0., 0., 0., 1. };
@@ -206,9 +196,11 @@ const int MS_PER_CYCLE = 10000;		// 10000 milliseconds = 10 seconds
 int		ActiveButton;			// current button that is down
 GLuint	AxesList;				// list to hold the axes
 int		AxesOn;					// != 0 means to draw the axes
-GLuint	TreeList;				// object display list
-GLuint	HeliList;				// Helicopter List
-GLuint	BladeList;				// Blade List
+GLuint	GridList;				// Grid display list
+GLuint	SphereList;				// Sphere display list
+GLuint	f1List;
+GLuint 	carList;
+GLuint	xboxList;
 int		DebugOn;				// != 0 means to print debugging info
 int		DepthCueOn;				// != 0 means to use intensity depth cueing
 int		DepthBufferOn;			// != 0 means to use the z-buffer
@@ -221,8 +213,10 @@ int		ShadowsOn;				// != 0 means to turn shadows on
 float	Time;					// used for animation, this has a value between 0. and 1.
 int		Xmouse, Ymouse;			// mouse values
 float	Xrot, Yrot;				// rotation angles in degrees
-Eyes	currentEye = OUTSIDE;
-float	bladeRotation = 0.0f;
+GLfloat lightColor[3] = {1.f, 1.f, 1.f};
+GLfloat lightPosition[3] = {0.f, 5.f, 0.f};
+bool	freezeAnimation = false;
+bool	isPointLight = true;
 
 
 // function prototypes:
@@ -302,13 +296,13 @@ MulArray3(float factor, float a, float b, float c )
 
 // these are here for when you need them -- just uncomment the ones you need:
 
-//#include "setmaterial.cpp"
-//#include "setlight.cpp"
-//#include "osusphere.cpp"
-//#include "osucone.cpp"
+#include "setmaterial.cpp"
+#include "setlight.cpp"
+#include "osusphere.cpp"
+#include "osucone.cpp"
 //#include "osutorus.cpp"
 //#include "bmptotexture.cpp"
-//#include "loadobjfile.cpp"
+#include "loadobjfile.cpp"
 //#include "keytime.cpp"
 //#include "glslprogram.cpp"
 
@@ -364,15 +358,17 @@ main( int argc, char *argv[ ] )
 void
 Animate( )
 {
+	if(freezeAnimation)
+		return;
 	// put animation stuff in here -- change some global variables for Display( ) to find:
 
 	int ms = glutGet(GLUT_ELAPSED_TIME);
 	ms %= MS_PER_CYCLE;							// makes the value of ms between 0 and MS_PER_CYCLE-1
 	Time = (float)ms / (float)MS_PER_CYCLE;		// makes the value of Time between 0. and slightly less than 1.
 
+	lightPosition[0] = 3 * cos(Time * 7 * F_PI);
+	lightPosition[2] = 3 * sin(Time * 7 * F_PI);
 	// for example, if you wanted to spin an object in Display( ), you might call: glRotatef( 360.f*Time,   0., 1., 0. );
-
-	bladeRotation = 360 * Time * BLADE_RPM;
 
 	// force a call to Display( ) next time it is convenient:
 
@@ -423,9 +419,9 @@ Display( )
 
 	glMatrixMode( GL_PROJECTION );
 	glLoadIdentity( );
-	// if( NowProjection == ORTHO )
-	// 	glOrtho( -2.f, 2.f,     -2.f, 2.f,     0.1f, 1000.f );
-	// else
+	if( NowProjection == ORTHO )
+		glOrtho( -2.f, 2.f,     -2.f, 2.f,     0.1f, 1000.f );
+	else
 		gluPerspective( 70.f, 1.f,	0.1f, 1000.f );
 
 	// place the objects into the scene:
@@ -435,20 +431,11 @@ Display( )
 
 	// set the eye position, look-at position, and up-vector:
 
-	if(currentEye == OUTSIDE){
-		gluLookAt( OUTSIDE_EYE[0], OUTSIDE_EYE[1], OUTSIDE_EYE[2],     OUTSIDE_LOOK_AT[0], OUTSIDE_LOOK_AT[1], OUTSIDE_LOOK_AT[2],     0.f, 1.f, 0.f );
-	} else {
-		gluLookAt( INSIDE_EYE[0], INSIDE_EYE[1], INSIDE_EYE[2],     INSIDE_LOOK_AT[0], INSIDE_LOOK_AT[1], INSIDE_LOOK_AT[2],     0.f, 1.f, 0.f );
-	}
+	gluLookAt(-15., 10., 15., 	0., 0., 0., 	0., 1., 0.);
 
 	// rotate the scene:
-	if(currentEye == OUTSIDE){
-		glRotatef( (GLfloat)Yrot, 0.f, 1.f, 0.f );
-		glRotatef( (GLfloat)Xrot, 1.f, 0.f, 0.f );
-	} else {
-		glRotatef( (GLfloat)0., 0.f, 1.f, 0.f );
-		glRotatef( (GLfloat)0., 1.f, 0.f, 0.f );
-	}
+	glRotatef( (GLfloat)Yrot, 0.f, 1.f, 0.f );
+	glRotatef( (GLfloat)Xrot, 1.f, 0.f, 0.f );
 
 	// uniformly scale the scene:
 
@@ -456,10 +443,7 @@ Display( )
 	if( Scale < MINSCALE )
 		Scale = MINSCALE;
 
-	if(currentEye == OUTSIDE)
-		glScalef( (GLfloat)Scale, (GLfloat)Scale, (GLfloat)Scale );
-	else
-		glScalef( 1., 1., 1. );
+	glScalef( (GLfloat)Scale, (GLfloat)Scale, (GLfloat)Scale );
 
 	// set the fog parameters:
 
@@ -490,32 +474,46 @@ Display( )
 	glEnable( GL_NORMALIZE );
 
 
-	// draw the tree object by calling up its display list:
+	if(isPointLight) {
+		SetPointLight( GL_LIGHT0, lightPosition[0], lightPosition[1], lightPosition[2], 		lightColor[0], lightColor[1], lightColor[2]);
+	} else {
+		SetSpotLight( GL_LIGHT0, lightPosition[0], lightPosition[1], lightPosition[2],		0., -1., 0., 		lightColor[0], lightColor[1], lightColor[2]);
+
+	}
 
 	glPushMatrix();
-	glTranslatef(0., 0., -25.);
-	glScalef(5, 5, 5);
-	glCallList( TreeList );
+	glColor3f(lightColor[0], lightColor[1], lightColor[2]);
+	glTranslatef(lightPosition[0], lightPosition[1] ,lightPosition[2]);
+	OsuSphere(0.5, 50, 50);
 	glPopMatrix();
 
-	// Draw Helicopter
-	glCallList( HeliList );
+	glEnable( GL_LIGHTING );
+	glEnable( GL_LIGHT0 );
 
-	// Draw Helicopter Blades
+	glCallList( GridList );
+
 	glPushMatrix();
-	glTranslatef(0., 2.9, -2.);
-	glRotatef(bladeRotation, 0., 1., 0.);
-	glScalef(5., 1., 5.);
-	glCallList( BladeList );
+	glTranslatef(3, 1.2, 3);
+	glScalef(0.005, 0.005, 0.005);
+	glTranslatef(1295.465, 1794.766, -2515.2);
+	glCallList(f1List);
 	glPopMatrix();
-	
+
 	glPushMatrix();
-	glTranslatef(0.5, 2.5, 9.);
-	glRotatef(90, 0., 0., 1.);
-	glRotatef(2*bladeRotation, 0., 1., 0.);
-	glScalef(3., 1., 3.);
-	glCallList( BladeList );
+	glTranslatef(-3, 0, 1);
+	glRotatef(45, 0., 1., 0.);
+	glScalef(0.3, 0.3, 0.3);
+	glCallList(carList);
 	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(0, 0, -4);
+	glRotatef(90, -1., 0., 0.);
+	glScalef(0.3, 0.3, 0.3);
+	glCallList(xboxList);
+	glPopMatrix();
+
+	glDisable( GL_LIGHTING );
 
 #ifdef DEMO_Z_FIGHTING
 	if( DepthFightingOn != 0 )
@@ -622,17 +620,6 @@ void
 DoDepthMenu( int id )
 {
 	DepthCueOn = id;
-
-	glutSetWindow( MainWindow );
-	glutPostRedisplay( );
-}
-
-void doViewMenu(int id) {
-	if(id == 0){
-		currentEye = OUTSIDE;
-	} else {
-		currentEye = INSIDE;
-	}
 
 	glutSetWindow( MainWindow );
 	glutPostRedisplay( );
@@ -764,13 +751,9 @@ InitMenus( )
 	glutAddMenuEntry( "Off",  0 );
 	glutAddMenuEntry( "On",   1 );
 
-	// int projmenu = glutCreateMenu( DoProjectMenu );
-	// glutAddMenuEntry( "Orthographic",  ORTHO );
-	// glutAddMenuEntry( "Perspective",   PERSP );
-
-	int viewMenu = glutCreateMenu( doViewMenu );
-	glutAddMenuEntry( "Outside", 0 );
-	glutAddMenuEntry( "Inside", 1 );
+	int projmenu = glutCreateMenu( DoProjectMenu );
+	glutAddMenuEntry( "Orthographic",  ORTHO );
+	glutAddMenuEntry( "Perspective",   PERSP );
 
 	int mainmenu = glutCreateMenu( DoMainMenu );
 	glutAddSubMenu(   "Axes",          axesmenu);
@@ -785,7 +768,7 @@ InitMenus( )
 #endif
 
 	glutAddSubMenu(   "Depth Cue",     depthcuemenu);
-	glutAddSubMenu(   "View",    	   viewMenu );
+	glutAddSubMenu(   "Projection",    projmenu );
 	glutAddMenuEntry( "Reset",         RESET );
 	glutAddSubMenu(   "Debug",         debugmenu);
 	glutAddMenuEntry( "Quit",          QUIT );
@@ -916,126 +899,45 @@ InitLists( )
 	const float sliceRad = 2 * M_PI / CIRCLE_DIVISIONS;
 
 	float offset = 0;
-	TreeList = glGenLists( 1 );
-	glNewList( TreeList, GL_COMPILE );
-		// Draw Tree Layers
-		glPushMatrix();
-		for(int layer = 0; layer < LAYER_COUNT; layer++){
-
-			// Scale down layer
-			float layerScale = pow(LAYER_SCALE, layer);
-			glScalef(layerScale, 1, layerScale);
-
-			// Set Color
-			glColor3f(Colors[layer%2][0], Colors[layer%2][1], Colors[layer%2][2]);
-				
-			// Draw Cone Bottom
-			glBegin( GL_TRIANGLE_FAN );
-
-				// Draw layer bottom
-				glVertex3f(0, offset, 0);
-				for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
-					glVertex3f(sin(sliceRad * i) * RADIUS, offset, cos(sliceRad * i) * RADIUS);
-				}
-				
-			glEnd( );
-
-			// Draw Cone Layer
-			glBegin( GL_TRIANGLE_FAN );
-				glVertex3f(0, offset + LAYER_HEIGHT * layerScale, 0);
-				for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
-					glVertex3f(sin(sliceRad * i) * RADIUS, offset, cos(sliceRad * i) * RADIUS);
-				}
-				offset += LAYER_HEIGHT * layerScale - LAYER_OVERLAPP * layerScale;
-			glEnd( );
-		}
-		glPopMatrix();
-
-		// Draw Tree Trunk
-		
-		// Set Color
-		glColor3f(Colors[2][0], Colors[2][1], Colors[2][2]);
-
-		//Draw Outside
-		glBegin(GL_TRIANGLE_STRIP);
-		for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
-			glVertex3f(sin(sliceRad * i) * RADIUS * 0.3, 0, cos(sliceRad * i) * RADIUS * 0.3);
-			glVertex3f(sin(sliceRad * i) * RADIUS * 0.3, -LAYER_HEIGHT, cos(sliceRad * i) * RADIUS * 0.3);
-		}
-		glEnd();
-
-		//Draw Bottom
-		glBegin(GL_TRIANGLE_FAN);
-		glVertex3f(0, -LAYER_HEIGHT, 0);
-		for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
-			glVertex3f(sin(sliceRad * i) * RADIUS * 0.3, -LAYER_HEIGHT, cos(sliceRad * i) * RADIUS * 0.3);
-		}
-		glEnd();
-		offset += 0.1;
-
-		// Draw Star On Top
-		float starSlice = 2 * M_PI / 10;
-		float starRadius = 0.3;
-		offset += starRadius / 2;
-
-		glBegin(GL_TRIANGLE_FAN);
-		glVertex3f(0, offset, 0.12);
-		for(int i = 0; i <= 10; i++) {
-			glColor3f(Colors[i%2 + 3][0], Colors[i%2 + 3][1], Colors[i%2 + 3][2]);
-			glVertex3f(sin(starSlice * i) * starRadius / (i%2 + 1), offset + cos(starSlice * i) * starRadius / (i%2 + 1), 0);
-		}
-		glEnd();
-
-		glBegin(GL_TRIANGLE_FAN);
-		glVertex3f(0, offset, -0.12);
-		for(int i = 0; i <= 10; i++) {
-			glColor3f(Colors[(i+1)%2 + 3][0], Colors[(i+1)%2 + 3][1], Colors[(i+1)%2 + 3][2]);
-			glVertex3f(sin(starSlice * i) * starRadius / (i%2 + 1), offset + cos(starSlice * i) * starRadius / (i%2 + 1), 0);
-		}
-		glEnd();
-		
-		
-
+	GridList = glGenLists( 1 );
+	glNewList( GridList, GL_COMPILE );
+			SetMaterial( 0.6f, 0.6f, 0.6f, 30.f );		// or whatever else you want
+			glNormal3f( 0., 1., 0. );
+			for( int i = 0; i < NZ; i++ )
+			{
+					glBegin( GL_QUAD_STRIP );
+					for( int j = 0; j < NX; j++ )
+					{
+							glVertex3f( X0 + DX*(float)j, YGRID, Z0 + DZ*(float)(i+0) );
+							glVertex3f( X0 + DX*(float)j, YGRID, Z0 + DZ*(float)(i+1) );
+					}
+					glEnd( );
+			}
 	glEndList( );
 
-	HeliList = glGenLists(1);	
-	glNewList(HeliList, GL_COMPILE);
-
-		int i;
-		struct edge *ep;
-		struct point *p0, *p1;
-
-		glPushMatrix( );
-		glTranslatef( 0., -1., 0. );
-		glRotatef(  97.,   0., 1., 0. );
-		glRotatef( -15.,   0., 0., 1. );
-		glColor3f(0.478, 0., 1.);
-		glBegin( GL_LINES );
-			for( i=0, ep = Heliedges; i < Helinedges; i++, ep++ )
-			{
-				p0 = &Helipoints[ ep->p0 ];
-				p1 = &Helipoints[ ep->p1 ];
-				glVertex3f( p0->x, p0->y, p0->z );
-				glVertex3f( p1->x, p1->y, p1->z );
-			}
-				glEnd( );
-		glPopMatrix( );
-
+	SphereList = glGenLists( 1 );
+	glNewList( SphereList, GL_COMPILE);
+		SetMaterial( 0.5, 0.0, 0.0, 50.);
+		OsuSphere(1.f, 15, 15);
 	glEndList();
 
-	BladeList = glGenLists(1);
-	glNewList( BladeList, GL_COMPILE );
-		glBegin( GL_TRIANGLES );
-			glColor3f(0.376, 0.91, 1.);
-			glVertex2f(  BLADE_RADIUS,  BLADE_WIDTH/2. );
-			glVertex2f(  0., 0. );
-			glVertex2f(  BLADE_RADIUS, -BLADE_WIDTH/2. );
+	f1List = glGenLists(1);
+	glNewList(f1List, GL_COMPILE);
+		SetMaterial( 0.8, 0.0, 0.0, 90.);
+		LoadObjFile( (char *)"F1Car.obj" );
+	glEndList();
 
-			glVertex2f( -BLADE_RADIUS, -BLADE_WIDTH/2. );
-			glVertex2f(  0., 0. );
-			glVertex2f( -BLADE_RADIUS,  BLADE_WIDTH/2. );
-		glEnd( );
-	glEndList( );
+	carList = glGenLists(1);
+	glNewList(carList, GL_COMPILE);
+		SetMaterial( 0.0, 0.0, 0.5, 30.);
+		LoadObjFile( (char *)"LowPolyCar.obj" );
+	glEndList();
+
+	xboxList = glGenLists(1);
+	glNewList(xboxList, GL_COMPILE);
+		SetMaterial( 0.0, 0.3, 0.0, 10.);
+		LoadObjFile( (char *)"xbox.obj" );
+	glEndList();
 }
 
 
@@ -1049,21 +951,62 @@ Keyboard( unsigned char c, int x, int y )
 
 	switch( c )
 	{
-		case 'o':
-		case 'O':
-			NowProjection = ORTHO;
-			break;
-
-		case 'p':
-		case 'P':
-			NowProjection = PERSP;
-			break;
-
 		case 'q':
 		case 'Q':
 		case ESCAPE:
 			DoMainMenu( QUIT );	// will not return here
 			break;				// happy compiler
+
+		case 'w':
+		case 'W':
+			lightColor[0] = 1.f;
+			lightColor[1] = 1.f;
+			lightColor[2] = 1.f;
+			break;
+		case 'r':
+		case 'R':
+			lightColor[0] = 1.f;
+			lightColor[1] = 0.f;
+			lightColor[2] = 0.f;
+			break;
+		case 'g':
+		case 'G':
+			lightColor[0] = 0.f;
+			lightColor[1] = 1.f;
+			lightColor[2] = 0.f;
+			break;
+		case 'b':
+		case 'B':
+			lightColor[0] = 0.f;
+			lightColor[1] = 0.f;
+			lightColor[2] = 1.f;
+			break;
+		case 'c':
+		case 'C':
+			lightColor[0] = 0.f;
+			lightColor[1] = 1.f;
+			lightColor[2] = 1.f;
+			break;
+		case 'm':
+		case 'M':
+			lightColor[0] = 1.f;
+			lightColor[1] = 0.f;
+			lightColor[2] = 1.f;
+			break;
+		
+		case 'f':
+		case 'F':
+			freezeAnimation = !freezeAnimation;
+			break;
+
+		case 's':
+		case 'S':
+			isPointLight = false;
+			break;
+		case 'p':
+		case 'P':
+			isPointLight = true;
+			break;
 
 		default:
 			fprintf( stderr, "Don't know what to do with keyboard hit: '%c' (0x%0x)\n", c, c );
