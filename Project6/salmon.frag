@@ -19,9 +19,9 @@ void
 main( )
 {
 	vec3 myColor = SALMONCOLOR;
-	float ds = ???					// s distance from current frag to salmon eye
-	float dt = ???					// t distance from current frag to salmon eye
-	if( <<we are within the eye circle>> )
+	float ds = vST.s;					// s distance from current frag to salmon eye
+	float dt = vST.t;					// t distance from current frag to salmon eye
+	if( dt < EYET + R && dt > EYET - R && ds < EYES + R && ds < EYES - R )
 	{
 			myColor = EYECOLOR;
 	}

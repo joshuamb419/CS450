@@ -304,7 +304,7 @@ MulArray3(float factor, float a, float b, float c )
 //#include "bmptotexture.cpp"
 #include "loadobjfile.cpp"
 //#include "keytime.cpp"
-#include "glslprogram.cpp"
+// #include "glslprogram.cpp"
 
 
 // main program:

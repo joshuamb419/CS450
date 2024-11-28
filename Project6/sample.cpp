@@ -290,9 +290,9 @@ MulArray3(float factor, float a, float b, float c )
 #include "bmptotexture.cpp"
 #include "loadobjfile.cpp"
 //#include "keytime.cpp"
-//#include "glslprogram.cpp"
+#include "glslprogram.cpp"
 
-
+GLSLProgram Pattern;
 // main program:
 
 int
@@ -468,16 +468,18 @@ Display( )
 	}
 
  	// Draw stuff
+	Pattern.Use();
 
-	glEnable( GL_LIGHTING );
-	glEnable( GL_LIGHT0 );
-	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	float s0 = Time;
+	float t0 = Time;
+	float d = Time;
+	Pattern.SetUniformVariable("uS0", s0);
+	Pattern.SetUniformVariable("uT0", t0);
+	Pattern.SetUniformVariable("uD", d);
 
 	glCallList( SalmonList );
 
-	glDisable( GL_TEXTURE_2D );
-	glDisable( GL_LIGHT0 );
-	glDisable( GL_LIGHTING );
+	Pattern.UnUse();
 
 #ifdef DEMO_Z_FIGHTING
 	if( DepthFightingOn != 0 )
@@ -836,6 +838,11 @@ InitGraphics( )
 
 	// all other setups go here, such as GLSLProgram and KeyTime setups:
 
+	Pattern.Init();
+	bool validPattern = Pattern.Create("salmon.vert", "salmon.frag");
+
+	if(!validPattern)
+		fprintf(stderr, "The shader did not compile!\n");
 }
 
 
