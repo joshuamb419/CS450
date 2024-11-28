@@ -186,9 +186,7 @@ GLuint	AxesList;				// list to hold the axes
 int		AxesOn;					// != 0 means to draw the axes
 GLuint	GridList;				// Grid display list
 GLuint	SphereList;				// Sphere display list
-GLuint	f1List;
-GLuint 	carList;
-GLuint	xboxList;
+GLuint	SalmonList;
 int		DebugOn;				// != 0 means to print debugging info
 int		DepthCueOn;				// != 0 means to use intensity depth cueing
 int		DepthBufferOn;			// != 0 means to use the z-buffer
@@ -206,30 +204,6 @@ GLfloat lightPosition[3] = {0.f, 0.f, 0.f};
 bool	freezeAnimation = false;
 bool	isPointLight = true;
 u_int 	displayMode = 0; // 0: GL_REPLACE, 1: GL_MODULATE, 2: No Texture
-
-struct planet {
- 	char*	name;
-	char*	file;
-	float	scale;
-	GLuint	displayList;
-	char	key;
-	GLuint	tex;
-};
-
-struct planet planets[] =
-{
-        { "Venus",      "venus.bmp",     0.95f, 0, 'v', 0 }, // 0
-        { "Earth",      "earth.bmp",     1.00f, 0, 'e', 0 }, // 1
-        { "Moon",       "moon.bmp",      0.27f, 0, 'm', 0 }, // 2
-        { "Jupiter",    "jupiter.bmp",  11.21f, 0, 'j', 0 }, // 3
-        { "Saturn",     "saturn.bmp",    9.45f, 0, 's', 0 }, // 4
-        { "Uranus",     "uranus.bmp",    4.01f, 0, 'u', 0 }, // 5
-        { "Neptune",    "neptune.bmp",   3.88f, 0, 'n', 0 }, // 6
-        { "Pluto",      "pluto.bmp",     0.19f, 0, 'p', 0 }, // 7
-};
-
-int planetCount = sizeof(planets) / sizeof(struct planet);
-int currentPlanet = 1; // Start initialized to earth
 
 // function prototypes:
 
@@ -493,31 +467,13 @@ Display( )
 
 	}
 
- 	// Draw sphere at the location of the light
-	glPushMatrix();
-	glColor3f(lightColor[0], lightColor[1], lightColor[2]);
-	glTranslatef(lightPosition[0], lightPosition[1] ,lightPosition[2]);
-	OsuSphere(0.5, 50, 50);
-	glPopMatrix();
+ 	// Draw stuff
 
-	if(displayMode != 2) {
-		glEnable(GL_TEXTURE_2D);
-	}
+	glEnable( GL_LIGHTING );
+	glEnable( GL_LIGHT0 );
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
-	if(displayMode == 1) {
-		glEnable( GL_LIGHTING );
-		glEnable( GL_LIGHT0 );
-		glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-	} else {
-		glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-	}
-
-	if(displayMode != 2) {
-		glBindTexture(GL_TEXTURE_2D, planets[currentPlanet].tex);
-	}
-
-	glCallList(planets[currentPlanet].displayList);
-
+	glCallList( SalmonList );
 
 	glDisable( GL_TEXTURE_2D );
 	glDisable( GL_LIGHT0 );
@@ -879,24 +835,7 @@ InitGraphics( )
 #endif
 
 	// all other setups go here, such as GLSLProgram and KeyTime setups:
-	for(int i = 0; i < planetCount; i++) {
-		int width, height;
-		char *file = planets[i].file;
-		unsigned char *texture = BmpToTexture( file, &width, &height );
-		if( texture == NULL )
-				fprintf( stderr, "Cannot open texture '%s'\n", file );
-		else
-				fprintf( stderr, "Opened '%s': width = %d ; height = %d\n", file, width, height );
 
-		glGenTextures( 1, &planets[i].tex );
-		glBindTexture( GL_TEXTURE_2D, planets[i].tex );
-		glPixelStorei( GL_UNPACK_ALIGNMENT, 1 );
-		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
-		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
-		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexImage2D( GL_TEXTURE_2D, 0, 3, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, texture );
-	}
 }
 
 
@@ -915,32 +854,11 @@ InitLists( )
 
 	// create the object:
 
-	const float LAYER_HEIGHT = 0.75;
-	const float LAYER_SCALE = 0.8f;
-	const float LAYER_OVERLAPP = 0.2f;
-	const int LAYER_COUNT = 4;
-	const int CIRCLE_DIVISIONS = 25;
-	const float RADIUS = 1;
-	const float sliceRad = 2 * M_PI / CIRCLE_DIVISIONS;
-
-	float offset = 0;
-
-	SphereList = glGenLists( 1 );
-	glNewList( SphereList, GL_COMPILE);
-		OsuSphere(1.f, 50, 50);
+	SalmonList = glGenLists( 1 );
+	glNewList( SalmonList, GL_COMPILE);
+		SetMaterial( 0.98, 0.50, 0.45, 0.4 );
+		LoadObjFile("salmon.obj");
 	glEndList();
-
-	for(int i = 0; i < planetCount; i++) {
-		planets[i].displayList = glGenLists(1);
-		glNewList(planets[i].displayList, GL_COMPILE);
-			glBindTexture(GL_TEXTURE_2D, planets[i].tex);
-			glPushMatrix();
-				glScalef(planets[i].scale, planets[i].scale, planets[i].scale);
-				glCallList(SphereList);
-			glPopMatrix();
-		glEndList();
-	}
-
 }
 
 
@@ -959,35 +877,6 @@ Keyboard( unsigned char c, int x, int y )
 		case ESCAPE:
 			DoMainMenu( QUIT );	// will not return here
 			break;				// happy compiler
-		
-		case 'v':
-			currentPlanet = 0;
-			break;
-		case 'e':
-			currentPlanet = 1;
-			break;
-		case 'm':
-			currentPlanet = 2;
-			break;
-		case 'j':
-			currentPlanet = 3;
-			break;
-		case 's':
-			currentPlanet = 4;
-			break;
-		case 'u':
-			currentPlanet = 5;
-			break;
-		case 'n':
-			currentPlanet = 6;
-			break;
-		case 'p':
-			currentPlanet = 7;
-			break;
-		case 't':
-			displayMode += 1;
-			displayMode %= 3;
-			break;
 		case 'f':
 		case 'F':
 			freezeAnimation = !freezeAnimation;

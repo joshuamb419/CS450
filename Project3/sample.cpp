@@ -194,7 +194,7 @@ const int MS_PER_CYCLE = 10000;		// 10000 milliseconds = 10 seconds
 // non-constant global variables:
 
 int		ActiveButton;			// current button that is down
-GLuint	AxesList;				// list to hold the axes
+GLuint	AxesList;				// list to hold the axesOsuSphere(1.f, 50, 50);
 int		AxesOn;					// != 0 means to draw the axes
 GLuint	GridList;				// Grid display list
 GLuint	SphereList;				// Sphere display list
@@ -304,7 +304,7 @@ MulArray3(float factor, float a, float b, float c )
 //#include "bmptotexture.cpp"
 #include "loadobjfile.cpp"
 //#include "keytime.cpp"
-//#include "glslprogram.cpp"
+#include "glslprogram.cpp"
 
 
 // main program:
