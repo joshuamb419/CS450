@@ -204,6 +204,9 @@ GLfloat lightPosition[3] = {0.f, 0.f, 0.f};
 bool	freezeAnimation = false;
 bool	isPointLight = true;
 u_int 	displayMode = 0; // 0: GL_REPLACE, 1: GL_MODULATE, 2: No Texture
+float	amplitude = 0.2;
+float 	frequency = 20;
+float	speed = 1;
 
 // function prototypes:
 
@@ -460,22 +463,29 @@ Display( )
 	glEnable( GL_NORMALIZE );
 
 
-	if(isPointLight) {
-		SetPointLight( GL_LIGHT0, lightPosition[0], lightPosition[1], lightPosition[2], 		lightColor[0], lightColor[1], lightColor[2]);
-	} else {
-		SetSpotLight( GL_LIGHT0, lightPosition[0], lightPosition[1], lightPosition[2],		0., -1., 0., 		lightColor[0], lightColor[1], lightColor[2]);
+	// if(isPointLight) {
+	// 	SetPointLight( GL_LIGHT0, lightPosition[0], lightPosition[1], lightPosition[2], 		lightColor[0], lightColor[1], lightColor[2]);
+	// } else {
+	// 	SetSpotLight( GL_LIGHT0, lightPosition[0], lightPosition[1], lightPosition[2],		0., -1., 0., 		lightColor[0], lightColor[1], lightColor[2]);
 
-	}
+	// }
 
  	// Draw stuff
 	Pattern.Use();
 
-	float s0 = Time;
-	float t0 = Time;
-	float d = Time;
-	Pattern.SetUniformVariable("uS0", s0);
-	Pattern.SetUniformVariable("uT0", t0);
-	Pattern.SetUniformVariable("uD", d);
+	Pattern.SetUniformVariable("uTime", Time);
+	Pattern.SetUniformVariable("uAmp", amplitude);
+	Pattern.SetUniformVariable("uFreq", frequency);
+	Pattern.SetUniformVariable("uSpeed", speed);
+
+	float ambient = 0.3;
+	float diffuse = 0.3;
+	float specular = 0.3;
+	float shininess = 0.5;
+	Pattern.SetUniformVariable("uKa", ambient);
+	Pattern.SetUniformVariable("uKd", diffuse);
+	Pattern.SetUniformVariable("uKs", specular);
+	Pattern.SetUniformVariable("uShininess", shininess);
 
 	glCallList( SalmonList );
 
@@ -824,8 +834,7 @@ InitGraphics( )
 	glutIdleFunc( Animate );
 
 	// init the glew package (a window must be open to do this):
-
-#ifdef WIN32
+// #ifdef WIN32
 	GLenum err = glewInit( );
 	if( err != GLEW_OK )
 	{
@@ -834,7 +843,7 @@ InitGraphics( )
 	else
 		fprintf( stderr, "GLEW initialized OK\n" );
 	fprintf( stderr, "Status: Using GLEW %s\n", glewGetString(GLEW_VERSION));
-#endif
+// #endif
 
 	// all other setups go here, such as GLSLProgram and KeyTime setups:
 
@@ -884,9 +893,35 @@ Keyboard( unsigned char c, int x, int y )
 		case ESCAPE:
 			DoMainMenu( QUIT );	// will not return here
 			break;				// happy compiler
-		case 'f':
+		case 'A':
+			amplitude += 0.2;
+			if(amplitude > 1)
+				amplitude = 0.2;
+			break;
+		case 'a':
+			amplitude -= 0.2;
+			if(amplitude < 0.2)
+				amplitude = 1;
+			break;
 		case 'F':
-			freezeAnimation = !freezeAnimation;
+			frequency += 20;
+			if(frequency > 100)
+				frequency = 20;
+			break;
+		case 'f':
+			frequency -= 20;
+			if(frequency < 20)
+				frequency = 100;
+			break;
+		case 'S':
+			speed += 1;
+			if(speed > 5)
+				speed = 1;
+			break;
+		case 's':
+			speed -= 1;
+			if(speed < 1)
+				speed = 5;
 			break;
 		default:
 			fprintf( stderr, "Don't know what to do with keyboard hit: '%c' (0x%0x)\n", c, c );

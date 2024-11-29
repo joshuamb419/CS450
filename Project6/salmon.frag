@@ -8,8 +8,8 @@ in  vec3  vN;			// normal vector
 in  vec3  vL;			// vector from point to light
 in  vec3  vE;			// vector from point to eye
 
-const float EYES = 0.80;					// not correct!
-const float EYET = 0.50;					// not correct!
+const float EYES = 0.91;					// not correct!
+const float EYET = 0.65;					// not correct!
 const float R 			= 0.03;				// radius of salmon eye
 const vec3 SALMONCOLOR		= vec3( 0.98, 0.50, 0.45 );	// "salmon" (r,g,b) color
 const vec3 EYECOLOR		= vec3( 0., 1., 0. );		// color to make the eye
@@ -19,9 +19,9 @@ void
 main( )
 {
 	vec3 myColor = SALMONCOLOR;
-	float ds = vST.s;					// s distance from current frag to salmon eye
-	float dt = vST.t;					// t distance from current frag to salmon eye
-	if( dt < EYET + R && dt > EYET - R && ds < EYES + R && ds < EYES - R )
+	float ds = vST.s - EYES;					// s distance from current frag to salmon eye
+	float dt = vST.t - EYET;					// t distance from current frag to salmon eye
+	if(ds * ds + dt * dt <= R * R)
 	{
 			myColor = EYECOLOR;
 	}
@@ -47,5 +47,6 @@ main( )
 			s = pow( max( cosphi, 0. ), uShininess );
 	}
 	vec3 specular = uKs * s * SPECULARCOLOR.rgb;
+	// gl_FragColor = vec4( ambient + diffuse + specular,  1. );
 	gl_FragColor = vec4( ambient + diffuse + specular,  1. );
 }

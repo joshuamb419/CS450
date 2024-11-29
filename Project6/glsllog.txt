@@ -1,0 +1,6 @@
+
+0:23(21): error: `EYEt' undeclared
+0:23(13): error: operands to arithmetic operators must be numeric
+0:24(15): warning: `dt' used uninitialized
+0:24(20): warning: `dt' used uninitialized
+
