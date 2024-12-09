@@ -1,5 +1,5 @@
 sample:		sample.cpp
-		g++   -o sample   sample.cpp  -I. -lGLEW -lGL -lGLU -lglut  -lm
+		g++   -o sample   sample.cpp trackloader.cpp  -I. -lGLEW -lGL -lGLU -lglut  -lm
 
 
 save:

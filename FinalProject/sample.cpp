@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-#include "heli.550"
-
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -30,6 +28,13 @@
 #endif
 
 #include "glut.h"
+
+#include "trackloader.h"
+#include <iostream>
+#include <vector>
+#include <fstream>
+#include <string>
+#include <bits/stdc++.h>
 
 
 
@@ -196,17 +201,16 @@ int		NowColor;				// index into Colors[ ]
 int		NowProjection;		// ORTHO or PERSP
 float	Scale;					// scaling factor
 int		ShadowsOn;				// != 0 means to turn shadows on
-float	Time;					// used for animation, this has a value between 0. and 1.
+int		Time;					// used for animation, this has a value between 0. and 1.
 int		Xmouse, Ymouse;			// mouse values
 float	Xrot, Yrot;				// rotation angles in degrees
-GLfloat lightColor[3] = {1.f, 1.f, 1.f};
-GLfloat lightPosition[3] = {0.f, 0.f, 0.f};
-bool	freezeAnimation = false;
-bool	isPointLight = true;
-u_int 	displayMode = 0; // 0: GL_REPLACE, 1: GL_MODULATE, 2: No Texture
-float	amplitude = 0.2;
-float 	frequency = 20;
-float	speed = 1;
+GLuint	TrackList;
+GLuint	CarList;
+Track*	TrackObject;
+double	distance = 0.0;
+std::vector<float*>	carPositions;
+int 	camera = 0;
+
 
 // function prototypes:
 
@@ -239,6 +243,8 @@ void			Cross(float[3], float[3], float[3]);
 float			Dot(float [3], float [3]);
 float			Unit(float [3], float [3]);
 float			Unit(float [3]);
+
+float	applyCatmallRomSpline(float t, float p0, float p1, float p2, float p3);
 
 
 // utility to create an array from 3 separate values:
@@ -288,14 +294,13 @@ MulArray3(float factor, float a, float b, float c )
 #include "setmaterial.cpp"
 #include "setlight.cpp"
 #include "osusphere.cpp"
-#include "osucone.cpp"
+// #include "osucone.cpp"
 //#include "osutorus.cpp"
 #include "bmptotexture.cpp"
 #include "loadobjfile.cpp"
 //#include "keytime.cpp"
-#include "glslprogram.cpp"
+// #include "glslprogram.cpp"
 
-GLSLProgram Pattern;
 // main program:
 
 int
@@ -347,20 +352,92 @@ main( int argc, char *argv[ ] )
 void
 Animate( )
 {
-	if(freezeAnimation)
-		return;
 	// put animation stuff in here -- change some global variables for Display( ) to find:
 
 	int ms = glutGet(GLUT_ELAPSED_TIME);
-	ms %= MS_PER_CYCLE;							// makes the value of ms between 0 and MS_PER_CYCLE-1
-	Time = (float)ms / (float)MS_PER_CYCLE;		// makes the value of Time between 0. and slightly less than 1.
 
-	lightPosition[0] = 15 * cos(Time * 3 * F_PI);
-	lightPosition[2] = 15 * sin(Time * 3 * F_PI);
+	double dt = (ms - Time) / 1000.0f;
+	distance += TrackObject->getCarSpeed() * dt;
+	while(distance > TrackObject->trackLength){
+		distance -= TrackObject->trackLength;
+	}
+	
+
+	std::vector<float*>* trackPoints = TrackObject->getTrackPoints();
+	float lineWidth = TrackObject->getTrackWidth() / (TrackObject->getCarCount() + 1);
+
+	for(int i = 0; i < TrackObject->getCarCount(); i++) {
+		float carDistance = distance + i * TrackObject->getCarSpeed();
+		while(carDistance > TrackObject->trackLength) {
+			carDistance -= TrackObject->trackLength;
+		}
+		float progress = carDistance / TrackObject->trackLength;
+		int node = floor(progress * trackPoints->size());
+		float extra = progress * trackPoints->size() - node;
+
+		// printf("Distance: %f / %f (%f), Node: %d, Extra: %f\n", distance, TrackObject->trackLength, progress, node, extra);
+
+		int p0, p1, p2, p3;
+
+		p0 = node - 1;
+		p1 = node;
+		p2 = node + 1;
+		p3 = node + 2;
+
+		if(p0 < 0) {
+			p0 = p0 + trackPoints->size();
+		}
+		
+		if(p1 >= trackPoints->size()) {
+			p1 = p1 - trackPoints->size();
+		}
+
+		if(p2 >= trackPoints->size()) {
+			p2 = p2 - trackPoints->size();
+		}
+
+		if(p3 >= trackPoints->size()) {
+			p3 = p3 - trackPoints->size();
+		}
+
+		float x1 = applyCatmallRomSpline(extra, 
+			trackPoints->at(p0)[0], 
+			trackPoints->at(p1)[0], 
+			trackPoints->at(p2)[0], 
+			trackPoints->at(p3)[0]);
+		float y1 = applyCatmallRomSpline(extra, 
+			trackPoints->at(p0)[1], 
+			trackPoints->at(p1)[1], 
+			trackPoints->at(p2)[1], 
+			trackPoints->at(p3)[1]);
+
+		float x2 = applyCatmallRomSpline(extra + 0.001, 
+			trackPoints->at(p0)[0], 
+			trackPoints->at(p1)[0], 
+			trackPoints->at(p2)[0], 
+			trackPoints->at(p3)[0]);
+		float y2 = applyCatmallRomSpline(extra + 0.001, 
+			trackPoints->at(p0)[1], 
+			trackPoints->at(p1)[1], 
+			trackPoints->at(p2)[1], 
+			trackPoints->at(p3)[1]);
+
+		float angle = atan2f(x2 - x1, y2 - y1);
+
+		x1 += (0.5 * TrackObject->getTrackWidth() - (i+1) * lineWidth) * sinf(angle + M_PI/2);
+		y1 += (0.5 * TrackObject->getTrackWidth() - (i+1) * lineWidth) * cosf(angle + M_PI/2);
+
+		carPositions.at(i)[0] = x1;
+		carPositions.at(i)[1] = y1;
+		carPositions.at(i)[2] = angle;
+	}
+
+
 	// for example, if you wanted to spin an object in Display( ), you might call: glRotatef( 360.f*Time,   0., 1., 0. );
 
 	// force a call to Display( ) next time it is convenient:
 
+	Time = ms;
 	glutSetWindow( MainWindow );
 	glutPostRedisplay( );
 }
@@ -418,13 +495,23 @@ Display( )
 	glMatrixMode( GL_MODELVIEW );
 	glLoadIdentity( );
 
+	glPushMatrix();
+
 	// set the eye position, look-at position, and up-vector:
-
-	gluLookAt(-15., 10., 15., 	0., 0., 0., 	0., 1., 0.);
-
+	if(camera == 0) {
+		gluLookAt(TrackObject->getTrackCenter()[0], 15., TrackObject->getTrackCenter()[1], 	TrackObject->getTrackCenter()[0], 0., TrackObject->getTrackCenter()[1], 	0., 0., 1.);
+	} else {
+		gluLookAt(carPositions.at(camera-1)[0], 0.1, carPositions.at(camera-1)[1],	carPositions.at(camera-1)[0] + sin(carPositions.at(camera-1)[2]), 0.1, carPositions.at(camera-1)[1] + cos(carPositions.at(camera-1)[2]),	0., 1., 0.);
+	}
 	// rotate the scene:
-	glRotatef( (GLfloat)Yrot, 0.f, 1.f, 0.f );
-	glRotatef( (GLfloat)Xrot, 1.f, 0.f, 0.f );
+
+	if(camera == 0) {
+		glRotatef( (GLfloat)Yrot, 0.f, 1.f, 0.f );
+		glRotatef( (GLfloat)Xrot, 1.f, 0.f, 0.f );
+	} else {
+		glRotatef( (GLfloat)0., 0.f, 1.f, 0.f );
+		glRotatef( (GLfloat)0., 1.f, 0.f, 0.f );
+	}
 
 	// uniformly scale the scene:
 
@@ -432,7 +519,11 @@ Display( )
 	if( Scale < MINSCALE )
 		Scale = MINSCALE;
 
-	glScalef( (GLfloat)Scale, (GLfloat)Scale, (GLfloat)Scale );
+	if(camera == 0) {
+		glScalef( (GLfloat)Scale, (GLfloat)Scale, (GLfloat)Scale );
+	} else {
+		glScalef(1., 1., 1.);
+	}
 
 	// set the fog parameters:
 
@@ -462,34 +553,28 @@ Display( )
 
 	glEnable( GL_NORMALIZE );
 
+	SetPointLight( GL_LIGHT0, TrackObject->getTrackCenter()[0], 1, TrackObject->getTrackCenter()[1], 		1.f, 1.f, 1.f);
 
-	// if(isPointLight) {
-	// 	SetPointLight( GL_LIGHT0, lightPosition[0], lightPosition[1], lightPosition[2], 		lightColor[0], lightColor[1], lightColor[2]);
-	// } else {
-	// 	SetSpotLight( GL_LIGHT0, lightPosition[0], lightPosition[1], lightPosition[2],		0., -1., 0., 		lightColor[0], lightColor[1], lightColor[2]);
+	glEnable( GL_LIGHTING );
+	glEnable( GL_LIGHT0 );
 
-	// }
+	glPushMatrix();
+	// glScalef(100, 100, 100);
+	glCallList(TrackList);
+	glPopMatrix();
 
+	for(int i = 0; i < TrackObject->getCarCount(); i++) {
+		glPushMatrix();
+		glTranslatef(carPositions.at(i)[0], 0.05, carPositions.at(i)[1]);
+		glRotatef(carPositions.at(i)[2] * 180 / M_PI, 0., 1., 0.);
+		glCallList(CarList);
+		glPopMatrix();
+	}
+
+	glDisable( GL_LIGHTING );
+	glPopMatrix();
  	// Draw stuff
-	Pattern.Use();
 
-	Pattern.SetUniformVariable("uTime", Time);
-	Pattern.SetUniformVariable("uAmp", amplitude);
-	Pattern.SetUniformVariable("uFreq", frequency);
-	Pattern.SetUniformVariable("uSpeed", speed);
-
-	float ambient = 0.3;
-	float diffuse = 0.3;
-	float specular = 0.3;
-	float shininess = 0.5;
-	Pattern.SetUniformVariable("uKa", ambient);
-	Pattern.SetUniformVariable("uKd", diffuse);
-	Pattern.SetUniformVariable("uKs", specular);
-	Pattern.SetUniformVariable("uShininess", shininess);
-
-	glCallList( SalmonList );
-
-	Pattern.UnUse();
 
 #ifdef DEMO_Z_FIGHTING
 	if( DepthFightingOn != 0 )
@@ -834,7 +919,7 @@ InitGraphics( )
 	glutIdleFunc( Animate );
 
 	// init the glew package (a window must be open to do this):
-// #ifdef WIN32
+#ifdef WIN32
 	GLenum err = glewInit( );
 	if( err != GLEW_OK )
 	{
@@ -843,17 +928,24 @@ InitGraphics( )
 	else
 		fprintf( stderr, "GLEW initialized OK\n" );
 	fprintf( stderr, "Status: Using GLEW %s\n", glewGetString(GLEW_VERSION));
-// #endif
+#endif
 
 	// all other setups go here, such as GLSLProgram and KeyTime setups:
-
-	Pattern.Init();
-	bool validPattern = Pattern.Create("salmon.vert", "salmon.frag");
-
-	if(!validPattern)
-		fprintf(stderr, "The shader did not compile!\n");
 }
 
+
+
+float applyCatmallRomSpline(float t, float p0, float p1, float p2, float p3) {
+    float pos;
+
+    pos = 0.5 * ((2 * p1) + (-p0 + p2) * t + (2*p0 + -5*p1 + 4*p2 - p3) * (t*t) + (-p0 + 3*p1 + -3*p2 + p3) * (t*t*t));
+    // pos += t * (p2 - p0);
+    // pos += t * t * (2 * p0 - 5 * p1 + 4 * p2 - p3);
+    // pos += t * t * t * (-1 * p0 + 3 * p1 - 3 * p2 + p3);
+    // pos *= 0.5;
+
+    return pos;
+}
 
 // initialize the display lists that will not change:
 // (a display list is a way to store opengl commands in
@@ -868,12 +960,365 @@ InitLists( )
 
 	glutSetWindow( MainWindow );
 
-	// create the object:
 
-	SalmonList = glGenLists( 1 );
-	glNewList( SalmonList, GL_COMPILE);
-		SetMaterial( 0.98, 0.50, 0.45, 0.4 );
-		LoadObjFile("salmon.obj");
+	// create the object:
+	TrackObject = new Track("./simple.track");
+	TrackList = glGenLists(1);
+	std::vector<float*>* trackPoints = TrackObject->getTrackPoints();
+	float trackWidth = TrackObject->getTrackWidth();
+	float granularity = TrackObject->getGranularity();
+	float curbWidth = TrackObject->getCurbWidth();
+
+	float trackCenterX = TrackObject->getTrackCenter()[0];
+	float trackCenterY = TrackObject->getTrackCenter()[1];
+	// printf("Track Center: %f, %f\n", trackCenterX, trackCenterY);
+
+	float* lastPoint = (float*) malloc(2*sizeof(float));
+	lastPoint[0] = trackPoints->at(trackPoints->size() - 1)[0];
+	lastPoint[1] = trackPoints->at(trackPoints->size() - 1)[1];
+
+	float* firstPoints = (float*) malloc(4*sizeof(float));
+
+	glNewList(TrackList, GL_COMPILE);
+        // glBegin(GL_LINE_LOOP);
+		// glVertex3f(0, 0, 0);
+
+		// Draw track surface
+		glBegin(GL_TRIANGLE_STRIP);
+			SetMaterial( 0.2, 0.2, 0.2, 0.5);
+			glNormal3f(0., 1., 0.);
+
+			for(int i = 0; i < trackPoints->size() + 1; i++) {	
+				int p0 = i - 1;
+				int p1 = i;
+				int p2 = i + 1;
+				int p3 = i + 2;
+
+				if(p0 < 0) {
+					p0 = p0 + trackPoints->size();
+				}
+
+				if(p0 >= trackPoints->size()) {
+					p0 = p0 - trackPoints->size();
+				}
+
+				if(p1 >= trackPoints->size()) {
+					p1 = p1 - trackPoints->size();
+				}
+
+				if(p2 >= trackPoints->size()) {
+					p2 = p2 - trackPoints->size();
+				}
+
+				if(p3 >= trackPoints->size()) {
+					p3 = p3 - trackPoints->size();
+				}
+
+				// printf("p0: %f,%f; p1: %f,%f; p2: %f,%f; p3: %f,%f\n", trackPoints->at(p0)[0], trackPoints->at(p0)[1], trackPoints->at(p1)[0], trackPoints->at(p1)[1], trackPoints->at(p2)[0], trackPoints->at(p2)[1], trackPoints->at(p3)[0], trackPoints->at(p3)[1]);
+
+				for(float t = 0.0; t < 1.f; t += granularity) {
+					float posx, posy, angle, x1, y1, x2, y2;
+
+					posx = applyCatmallRomSpline(t, 
+							trackPoints->at(p0)[0], 
+							trackPoints->at(p1)[0], 
+							trackPoints->at(p2)[0], 
+							trackPoints->at(p3)[0]);
+					posy = applyCatmallRomSpline(t, 
+							trackPoints->at(p0)[1], 
+							trackPoints->at(p1)[1], 
+							trackPoints->at(p2)[1], 
+							trackPoints->at(p3)[1]);
+					angle = atan2f(posx - lastPoint[0], posy - lastPoint[1]);
+
+					x1 = 0.5 * trackWidth * sinf(angle + M_PI/2) + posx;
+					y1 = 0.5 * trackWidth * cosf(angle + M_PI/2) + posy;
+
+					x2 = 0.5 * trackWidth * sinf(angle - M_PI/2) + posx;
+					y2 = 0.5 * trackWidth * cosf(angle - M_PI/2) + posy;
+
+					if(i == 0) {
+						lastPoint[0] = posx;
+						lastPoint[1] = posy;
+
+						break;
+					}
+
+					if(i == 1 && t == 0.0) {
+						firstPoints[0] = x1;
+						firstPoints[1] = y1;
+						firstPoints[2] = x2;
+						firstPoints[3] = y2;
+					}
+
+					// printf("Center point: %f, %f, %frad; P1: %f, %f; P2: %f, %f\n", posx, posy, angle * 180 / M_PI, x1, y1, x2, y2);
+					
+					glVertex3f(x1, 0, y1);
+					glVertex3f(x2, 0, y2);
+					// glVertex3f(posx, 0., posy);
+
+					TrackObject->trackLength += sqrt(pow(lastPoint[0] - posx, 2) + pow(lastPoint[1] - posy, 2));
+
+					lastPoint[0] = posx;
+					lastPoint[1] = posy;
+				}
+			}
+			glVertex3f(firstPoints[0], 0, firstPoints[1]);
+			glVertex3f(firstPoints[2], 0, firstPoints[3]);
+        glEnd();
+
+		// Draw curb one
+		glBegin(GL_TRIANGLE_STRIP);
+			SetMaterial( 1, 0, 0, 1);
+			glNormal3f(0., 1., 0.);
+
+			for(int i = 0; i < trackPoints->size() + 1; i++) {	
+				int p0 = i - 1;
+				int p1 = i;
+				int p2 = i + 1;
+				int p3 = i + 2;
+
+				if(p0 < 0) {
+					p0 = p0 + trackPoints->size();
+				}
+
+				if(p0 >= trackPoints->size()) {
+					p0 = p0 - trackPoints->size();
+				}
+
+				if(p1 >= trackPoints->size()) {
+					p1 = p1 - trackPoints->size();
+				}
+
+				if(p2 >= trackPoints->size()) {
+					p2 = p2 - trackPoints->size();
+				}
+
+				if(p3 >= trackPoints->size()) {
+					p3 = p3 - trackPoints->size();
+				}
+
+				// printf("p0: %f,%f; p1: %f,%f; p2: %f,%f; p3: %f,%f\n", trackPoints->at(p0)[0], trackPoints->at(p0)[1], trackPoints->at(p1)[0], trackPoints->at(p1)[1], trackPoints->at(p2)[0], trackPoints->at(p2)[1], trackPoints->at(p3)[0], trackPoints->at(p3)[1]);
+
+				for(float t = 0.0; t < 1.f; t += granularity) {
+					float posx, posy, angle, x1, y1, x2, y2;
+
+					posx = applyCatmallRomSpline(t, 
+							trackPoints->at(p0)[0], 
+							trackPoints->at(p1)[0], 
+							trackPoints->at(p2)[0], 
+							trackPoints->at(p3)[0]);
+					posy = applyCatmallRomSpline(t, 
+							trackPoints->at(p0)[1], 
+							trackPoints->at(p1)[1], 
+							trackPoints->at(p2)[1], 
+							trackPoints->at(p3)[1]);
+					angle = atan2f(posx - lastPoint[0], posy - lastPoint[1]);
+
+					x1 = 0.5 * trackWidth * sinf(angle + M_PI/2) + posx;
+					y1 = 0.5 * trackWidth * cosf(angle + M_PI/2) + posy;
+
+					x2 = curbWidth * sinf(angle + M_PI/2) + x1;
+					y2 = curbWidth * cosf(angle + M_PI/2) + y1;
+
+					if(i == 0) {
+						lastPoint[0] = posx;
+						lastPoint[1] = posy;
+
+						break;
+					}
+
+					if(i == 1 && t == 0.0) {
+						firstPoints[0] = x1;
+						firstPoints[1] = y1;
+						firstPoints[2] = x2;
+						firstPoints[3] = y2;
+					}
+
+					// printf("Center point: %f, %f, %frad; P1: %f, %f; P2: %f, %f\n", posx, posy, angle * 180 / M_PI, x1, y1, x2, y2);
+					
+					glVertex3f(x1, 0, y1);
+					glVertex3f(x2, 0, y2);
+					// glVertex3f(posx, 0., posy);
+
+					lastPoint[0] = posx;
+					lastPoint[1] = posy;
+				}
+			}
+			glVertex3f(firstPoints[0], 0, firstPoints[1]);
+			glVertex3f(firstPoints[2], 0, firstPoints[3]);
+        glEnd();
+
+		// Draw curb two
+		glBegin(GL_TRIANGLE_STRIP);
+			SetMaterial( 0, 0, 1, 1);
+			glNormal3f(0., 1., 0.);
+
+			for(int i = 0; i < trackPoints->size() + 1; i++) {	
+				int p0 = i - 1;
+				int p1 = i;
+				int p2 = i + 1;
+				int p3 = i + 2;
+
+				if(p0 < 0) {
+					p0 = p0 + trackPoints->size();
+				}
+
+				if(p0 >= trackPoints->size()) {
+					p0 = p0 - trackPoints->size();
+				}
+
+				if(p1 >= trackPoints->size()) {
+					p1 = p1 - trackPoints->size();
+				}
+
+				if(p2 >= trackPoints->size()) {
+					p2 = p2 - trackPoints->size();
+				}
+
+				if(p3 >= trackPoints->size()) {
+					p3 = p3 - trackPoints->size();
+				}
+
+				// printf("p0: %f,%f; p1: %f,%f; p2: %f,%f; p3: %f,%f\n", trackPoints->at(p0)[0], trackPoints->at(p0)[1], trackPoints->at(p1)[0], trackPoints->at(p1)[1], trackPoints->at(p2)[0], trackPoints->at(p2)[1], trackPoints->at(p3)[0], trackPoints->at(p3)[1]);
+
+				for(float t = 0.0; t < 1.f; t += granularity) {
+					float posx, posy, angle, x1, y1, x2, y2;
+
+					posx = applyCatmallRomSpline(t, 
+							trackPoints->at(p0)[0], 
+							trackPoints->at(p1)[0], 
+							trackPoints->at(p2)[0], 
+							trackPoints->at(p3)[0]);
+					posy = applyCatmallRomSpline(t, 
+							trackPoints->at(p0)[1], 
+							trackPoints->at(p1)[1], 
+							trackPoints->at(p2)[1], 
+							trackPoints->at(p3)[1]);
+					angle = atan2f(posx - lastPoint[0], posy - lastPoint[1]);
+
+					x1 = 0.5 * trackWidth * sinf(angle - M_PI/2) + posx;
+					y1 = 0.5 * trackWidth * cosf(angle - M_PI/2) + posy;
+
+					x2 = curbWidth * sinf(angle - M_PI/2) + x1;
+					y2 = curbWidth * cosf(angle - M_PI/2) + y1;
+
+					if(i == 0) {
+						lastPoint[0] = posx;
+						lastPoint[1] = posy;
+
+						break;
+					}
+
+					if(i == 1 && t == 0.0) {
+						firstPoints[0] = x1;
+						firstPoints[1] = y1;
+						firstPoints[2] = x2;
+						firstPoints[3] = y2;
+					}
+
+					// printf("Center point: %f, %f, %frad; P1: %f, %f; P2: %f, %f\n", posx, posy, angle * 180 / M_PI, x1, y1, x2, y2);
+					
+					glVertex3f(x1, 0, y1);
+					glVertex3f(x2, 0, y2);
+					// glVertex3f(posx, 0., posy);
+
+					lastPoint[0] = posx;
+					lastPoint[1] = posy;
+				}
+			}
+			glVertex3f(firstPoints[0], 0, firstPoints[1]);
+			glVertex3f(firstPoints[2], 0, firstPoints[3]);
+        glEnd();
+
+		// Draw Grass
+		glBegin(GL_TRIANGLE_FAN);
+			SetMaterial( 0.2, 1., 0.2, 1);
+			glNormal3f(0., 1., 0.);
+			glVertex3f(trackCenterX, -0.001, trackCenterY);
+
+			for(int i = 0; i < trackPoints->size() + 1; i++) {	
+				int p0 = i - 1;
+				int p1 = i;
+				int p2 = i + 1;
+				int p3 = i + 2;
+
+				if(p0 < 0) {
+					p0 = p0 + trackPoints->size();
+				}
+
+				if(p0 >= trackPoints->size()) {
+					p0 = p0 - trackPoints->size();
+				}
+
+				if(p1 >= trackPoints->size()) {
+					p1 = p1 - trackPoints->size();
+				}
+
+				if(p2 >= trackPoints->size()) {
+					p2 = p2 - trackPoints->size();
+				}
+
+				if(p3 >= trackPoints->size()) {
+					p3 = p3 - trackPoints->size();
+				}
+
+				// printf("p0: %f,%f; p1: %f,%f; p2: %f,%f; p3: %f,%f\n", trackPoints->at(p0)[0], trackPoints->at(p0)[1], trackPoints->at(p1)[0], trackPoints->at(p1)[1], trackPoints->at(p2)[0], trackPoints->at(p2)[1], trackPoints->at(p3)[0], trackPoints->at(p3)[1]);
+
+				for(float t = 0.0; t < 1.f; t += granularity) {
+					float posx, posy, angle, x1, y1, x2, y2;
+
+					posx = applyCatmallRomSpline(t, 
+							trackPoints->at(p0)[0], 
+							trackPoints->at(p1)[0], 
+							trackPoints->at(p2)[0], 
+							trackPoints->at(p3)[0]);
+					posy = applyCatmallRomSpline(t, 
+							trackPoints->at(p0)[1], 
+							trackPoints->at(p1)[1], 
+							trackPoints->at(p2)[1], 
+							trackPoints->at(p3)[1]);
+					angle = atan2f(posx - lastPoint[0], posy - lastPoint[1]);
+
+					x1 = (0.5 * trackWidth + curbWidth) * sinf(angle - M_PI/2) + posx;
+					y1 = (0.5 * trackWidth + curbWidth) * cosf(angle - M_PI/2) + posy;
+
+					if(i == 0) {
+						lastPoint[0] = posx;
+						lastPoint[1] = posy;
+
+						break;
+					}
+
+					if(i == 1 && t == 0.0) {
+						firstPoints[0] = x1;
+						firstPoints[1] = y1;
+					}
+
+					// printf("Center point: %f, %f, %frad; P1: %f, %f; P2: %f, %f\n", posx, posy, angle * 180 / M_PI, x1, y1, x2, y2);
+					
+					glVertex3f(x1, -0.001, y1);
+					// glVertex3f(posx, 0., posy);
+
+					lastPoint[0] = posx;
+					lastPoint[1] = posy;
+				}
+			}
+			glVertex3f(firstPoints[0], 0, firstPoints[1]);
+        glEnd();
+
+
+    glEndList();
+
+	CarList = glGenLists(1);
+	glNewList(CarList, GL_COMPILE);
+	glPushMatrix();
+		glRotatef(-135, 0., 1., 0.);
+		glScalef(0.0003, 0.0003, 0.0003);
+		glTranslatef(1295.465, 1794.766, -2515.2);
+		SetMaterial( 0.8, 0.0, 0.0, 90.);
+		LoadObjFile( (char *)"F1Car.obj" );
+	glPopMatrix();
 	glEndList();
 }
 
@@ -893,35 +1338,53 @@ Keyboard( unsigned char c, int x, int y )
 		case ESCAPE:
 			DoMainMenu( QUIT );	// will not return here
 			break;				// happy compiler
-		case 'A':
-			amplitude += 0.2;
-			if(amplitude > 1)
-				amplitude = 0.2;
+		case '0':
+			camera = 0;
 			break;
-		case 'a':
-			amplitude -= 0.2;
-			if(amplitude < 0.2)
-				amplitude = 1;
+		case '1':
+			camera = 1;
+			if(camera > TrackObject->getCarCount())
+				camera = 0;
 			break;
-		case 'F':
-			frequency += 20;
-			if(frequency > 100)
-				frequency = 20;
+		case '2':
+			camera = 2;
+			if(camera > TrackObject->getCarCount())
+				camera = 0;
 			break;
-		case 'f':
-			frequency -= 20;
-			if(frequency < 20)
-				frequency = 100;
+		case '3':
+			camera = 3;
+			if(camera > TrackObject->getCarCount())
+				camera = 0;
 			break;
-		case 'S':
-			speed += 1;
-			if(speed > 5)
-				speed = 1;
+		case '4':
+			camera = 4;
+			if(camera > TrackObject->getCarCount())
+				camera = 0;
 			break;
-		case 's':
-			speed -= 1;
-			if(speed < 1)
-				speed = 5;
+		case '5':
+			camera = 5;
+			if(camera > TrackObject->getCarCount())
+				camera = 0;
+			break;
+		case '6':
+			camera = 6;
+			if(camera > TrackObject->getCarCount())
+				camera = 0;
+			break;
+		case '7':
+			camera = 7;
+			if(camera > TrackObject->getCarCount())
+				camera = 0;
+			break;
+		case '8':
+			camera = 8;
+			if(camera > TrackObject->getCarCount())
+				camera = 0;
+			break;
+		case '9':
+			camera = 9;
+			if(camera > TrackObject->getCarCount())
+				camera = 0;
 			break;
 		default:
 			fprintf( stderr, "Don't know what to do with keyboard hit: '%c' (0x%0x)\n", c, c );
@@ -1046,6 +1509,12 @@ Reset( )
 	NowColor = YELLOW;
 	NowProjection = PERSP;
 	Xrot = Yrot = 0.;
+
+	carPositions.clear();
+	for(int i = 0; i < TrackObject->getCarCount(); i++){
+		float* arr = (float*) malloc(3*sizeof(float));
+		carPositions.push_back(arr);
+	}
 }
 
 
