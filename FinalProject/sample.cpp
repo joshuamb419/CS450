@@ -123,6 +123,19 @@ const GLfloat BACKCOLOR[ ] = { 0., 0., 0., 1. };
 
 const GLfloat AXES_WIDTH   = 3.;
 
+// Define Tree Properties
+const float LAYER_HEIGHT = 0.75;
+const float LAYER_SCALE = 0.8f;
+const float LAYER_OVERLAPP = 0.2f;
+const int LAYER_COUNT = 4;
+const int CIRCLE_DIVISIONS = 25;
+const float RADIUS = 1;
+const float sliceRad = 2 * M_PI / CIRCLE_DIVISIONS;
+const int treeCount = 5;
+
+// Define track file
+char* trackFile = "./hourglass.track";
+
 // the color numbers:
 // this order must match the radio button order, which must match the order of the color names,
 // 	which must match the order of the color RGB values
@@ -191,7 +204,7 @@ GLuint	AxesList;				// list to hold the axes
 int		AxesOn;					// != 0 means to draw the axes
 GLuint	GridList;				// Grid display list
 GLuint	SphereList;				// Sphere display list
-GLuint	SalmonList;
+GLuint	TreeList;
 int		DebugOn;				// != 0 means to print debugging info
 int		DepthCueOn;				// != 0 means to use intensity depth cueing
 int		DepthBufferOn;			// != 0 means to use the z-buffer
@@ -552,6 +565,21 @@ Display( )
 	// since we are using glScalef( ), be sure the normals get unitized:
 
 	glEnable( GL_NORMALIZE );
+
+	// Draw Trees
+	srand(TrackObject->getTrackPoints()->size());
+	float min = TrackObject->minDistanceToCenter - RADIUS;
+	for(int i = 0; i < treeCount; i++) {
+		float distance = static_cast<float> (rand()) / (static_cast<float> (RAND_MAX)) * min;
+		float angle = static_cast<float> (rand()) / (static_cast<float> (RAND_MAX)) * M_PI * 2;
+
+		// printf("Drawing Tree %d at: %fu, %frad\n", i, distance, angle);
+
+		glPushMatrix();
+			glTranslatef(distance * cos(angle) + TrackObject->getTrackCenter()[0], LAYER_HEIGHT, distance * sin(angle) + TrackObject->getTrackCenter()[1]);
+			glCallList(TreeList);
+		glPopMatrix();
+	}
 
 	SetPointLight( GL_LIGHT0, TrackObject->getTrackCenter()[0], 1, TrackObject->getTrackCenter()[1], 		1.f, 1.f, 1.f);
 
@@ -960,9 +988,93 @@ InitLists( )
 
 	glutSetWindow( MainWindow );
 
+	// Tree List
+
+	float offset = 0;
+	TreeList = glGenLists( 1 );
+	glNewList( TreeList, GL_COMPILE );
+		// Draw Tree Layers
+		glPushMatrix();
+		for(int layer = 0; layer < LAYER_COUNT; layer++){
+
+			// Scale down layer
+			float layerScale = pow(LAYER_SCALE, layer);
+			glScalef(layerScale, 1, layerScale);
+
+			// Set Color
+			glColor3f(Colors[layer%2][0], Colors[layer%2][1], Colors[layer%2][2]);
+				
+			// Draw Cone Bottom
+			glBegin( GL_TRIANGLE_FAN );
+
+				// Draw layer bottom
+				glVertex3f(0, offset, 0);
+				for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
+					glVertex3f(sin(sliceRad * i) * RADIUS, offset, cos(sliceRad * i) * RADIUS);
+				}
+				
+			glEnd( );
+
+			// Draw Cone Layer
+			glBegin( GL_TRIANGLE_FAN );
+				glVertex3f(0, offset + LAYER_HEIGHT * layerScale, 0);
+				for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
+					glVertex3f(sin(sliceRad * i) * RADIUS, offset, cos(sliceRad * i) * RADIUS);
+				}
+				offset += LAYER_HEIGHT * layerScale - LAYER_OVERLAPP * layerScale;
+			glEnd( );
+		}
+		glPopMatrix();
+
+		// Draw Tree Trunk
+		
+		// Set Color
+		glColor3f(Colors[2][0], Colors[2][1], Colors[2][2]);
+
+		//Draw Outside
+		glBegin(GL_TRIANGLE_STRIP);
+		for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
+			glVertex3f(sin(sliceRad * i) * RADIUS * 0.3, 0, cos(sliceRad * i) * RADIUS * 0.3);
+			glVertex3f(sin(sliceRad * i) * RADIUS * 0.3, -LAYER_HEIGHT, cos(sliceRad * i) * RADIUS * 0.3);
+		}
+		glEnd();
+
+		//Draw Bottom
+		glBegin(GL_TRIANGLE_FAN);
+		glVertex3f(0, -LAYER_HEIGHT, 0);
+		for(int i = 0; i <= CIRCLE_DIVISIONS; i++) {
+			glVertex3f(sin(sliceRad * i) * RADIUS * 0.3, -LAYER_HEIGHT, cos(sliceRad * i) * RADIUS * 0.3);
+		}
+		glEnd();
+		offset += 0.1;
+
+		// Draw Star On Top
+		float starSlice = 2 * M_PI / 10;
+		float starRadius = 0.3;
+		offset += starRadius / 2;
+
+		glBegin(GL_TRIANGLE_FAN);
+		glVertex3f(0, offset, 0.12);
+		for(int i = 0; i <= 10; i++) {
+			glColor3f(Colors[i%2 + 3][0], Colors[i%2 + 3][1], Colors[i%2 + 3][2]);
+			glVertex3f(sin(starSlice * i) * starRadius / (i%2 + 1), offset + cos(starSlice * i) * starRadius / (i%2 + 1), 0);
+		}
+		glEnd();
+
+		glBegin(GL_TRIANGLE_FAN);
+		glVertex3f(0, offset, -0.12);
+		for(int i = 0; i <= 10; i++) {
+			glColor3f(Colors[(i+1)%2 + 3][0], Colors[(i+1)%2 + 3][1], Colors[(i+1)%2 + 3][2]);
+			glVertex3f(sin(starSlice * i) * starRadius / (i%2 + 1), offset + cos(starSlice * i) * starRadius / (i%2 + 1), 0);
+		}
+		glEnd();
+		
+		
+
+	glEndList( );
 
 	// create the object:
-	TrackObject = new Track("./simple.track");
+	TrackObject = new Track(trackFile);
 	TrackList = glGenLists(1);
 	std::vector<float*>* trackPoints = TrackObject->getTrackPoints();
 	float trackWidth = TrackObject->getTrackWidth();
@@ -1232,6 +1344,7 @@ InitLists( )
         glEnd();
 
 		// Draw Grass
+		float minDistanceToCenter = 10.0;
 		glBegin(GL_TRIANGLE_FAN);
 			SetMaterial( 0.2, 1., 0.2, 1);
 			glNormal3f(0., 1., 0.);
@@ -1283,6 +1396,9 @@ InitLists( )
 					x1 = (0.5 * trackWidth + curbWidth) * sinf(angle - M_PI/2) + posx;
 					y1 = (0.5 * trackWidth + curbWidth) * cosf(angle - M_PI/2) + posy;
 
+					if(sqrt(pow(trackCenterX - x1, 2) + pow(trackCenterY - y1, 2)) < minDistanceToCenter)
+						minDistanceToCenter = sqrt(pow(trackCenterX - x1, 2) + pow(trackCenterY - y1, 2));
+
 					if(i == 0) {
 						lastPoint[0] = posx;
 						lastPoint[1] = posy;
@@ -1305,7 +1421,12 @@ InitLists( )
 				}
 			}
 			glVertex3f(firstPoints[0], 0, firstPoints[1]);
+			TrackObject->minDistanceToCenter = minDistanceToCenter;
+			printf("Min distance to center is: %f\n", TrackObject->minDistanceToCenter);
         glEnd();
+
+		// Draw Trees
+
 
 
     glEndList();
